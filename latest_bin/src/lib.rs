@@ -29,6 +29,10 @@ fn should_include(entry: &DirEntry) -> bool {
     }
 }
 
+// TODO: update to accept multiple paths to check; specifically we need to account for the case
+// where we have both a local binutils workspace and a local version of malleatus/shared_binutils
+// (that we are referencing via `.cargo/config.toml` override). In that case we want to check both
+// the local binutils workspace and the local shared_binutils workspace.
 pub fn has_updated_files<P: AsRef<Path>>(dir: P, current_exe_mod_time: SystemTime) -> Result<bool> {
     for entry in WalkDir::new(dir).into_iter().filter_entry(should_include) {
         let entry = entry?;
