@@ -11,10 +11,7 @@ To use this library, add it as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-latest_bin = { 
-  git = "https://github.com/malleatus/shared_binutils.git", 
-  subdir = "latest_bin" 
-}
+latest_bin = { git = "https://github.com/malleatus/shared_binutils.git", subdir = "latest_bin" }
 
 ```
 
