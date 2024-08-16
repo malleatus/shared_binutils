@@ -56,7 +56,7 @@ fn get_current_exe() -> Result<PathBuf> {
 
 /// Finds the nearest crate root by traversing up the directory tree from the current executable
 /// (after resolving symlinks).
-fn get_crate_root() -> Result<PathBuf> {
+pub fn get_crate_root() -> Result<PathBuf> {
     let current_exe = get_current_exe()?;
     let mut path = current_exe.as_path();
 
