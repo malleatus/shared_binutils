@@ -2,6 +2,8 @@
 name = "latest_bin"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["Robert Jackson <me@rwjblue.com>"]
 
 [dependencies]
 anyhow = "1.0.79"
