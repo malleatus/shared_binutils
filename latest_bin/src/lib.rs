@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
-use nix::unistd::execv;
-use std::ffi::CString;
+use std::ffi;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -52,7 +51,7 @@ pub fn has_updated_files<P: AsRef<Path>>(dir: P, current_exe_mod_time: SystemTim
 }
 
 /// Get the path to the current executable making sure it is canonicalized.
-fn get_current_exe() -> Result<PathBuf> {
+fn get_canonicalized_current_exe() -> Result<PathBuf> {
     let current_exe = env::current_exe().context("Failed to get the current executable path")?;
     let canonicalized_exe = current_exe
         .canonicalize()
@@ -63,7 +62,7 @@ fn get_current_exe() -> Result<PathBuf> {
 /// Finds the nearest crate root by traversing up the directory tree from the current executable
 /// (after resolving symlinks).
 pub fn get_crate_root() -> Result<PathBuf> {
-    let current_exe = get_current_exe()?;
+    let current_exe = get_canonicalized_current_exe()?;
     let mut path = current_exe.as_path();
 
     while let Some(parent) = path.parent() {
@@ -78,7 +77,7 @@ pub fn get_crate_root() -> Result<PathBuf> {
 
 pub fn needs_rebuild() -> Result<bool> {
     let crate_root = get_crate_root()?;
-    let current_exe = get_current_exe()?;
+    let current_exe = get_canonicalized_current_exe()?;
 
     debug!("crate_root: {}", crate_root.display());
     debug!("current_exe: {}", current_exe.display());
@@ -119,22 +118,38 @@ pub fn run_cargo_build() -> Result<()> {
 }
 
 pub fn exec_updated_bin() -> Result<()> {
-    let current_exe = get_current_exe()?;
+    // intentially not using canonicalized path here, as we want to exec as close to the original
+    // as possible
+    let current_exe = env::current_exe().context("Failed to get the current executable path")?;
 
-    let exe_cstring = CString::new(
+    let exe_cstring = ffi::CString::new(
         current_exe
             .to_str()
             .context("Executable path is not valid UTF-8")?,
     )
     .context("Failed to convert executable path to CString")?;
 
-    let args: Vec<CString> = env::args()
-        .map(|arg| CString::new(arg).context("Failed to convert argument to CString"))
-        .collect::<Result<Vec<CString>>>()?;
+    let args: Vec<ffi::CString> = env::args()
+        .map(|arg| ffi::CString::new(arg).context("Failed to convert argument to CString"))
+        .collect::<Result<Vec<ffi::CString>>>()?;
 
-    let args_ref: Vec<&CString> = args.iter().collect();
+    let args_ref: Vec<&ffi::CString> = args.iter().collect();
 
-    execv(&exe_cstring, &args_ref).context("Failed to execv the current executable")?;
+    let env_vars: Vec<ffi::CString> = env::vars()
+        .map(|(key, value)| {
+            ffi::CString::new(format!("{}={}", key, value))
+                .with_context(|| format!("Failed to convert env var to CString: {}={}", key, value))
+        })
+        .chain(std::iter::once(
+            ffi::CString::new("SKIP_LATEST_BIN_CHECK=1")
+                .context("Failed to convert `SKIP_LATEST_BIN_CHECK=1` to CString"),
+        ))
+        .collect::<Result<Vec<ffi::CString>>>()?;
+
+    let env_ref: Vec<&ffi::CStr> = env_vars.iter().map(|var| var.as_c_str()).collect();
+
+    nix::unistd::execve(&exe_cstring, &args_ref, &env_ref)
+        .context("Failed to execve the current executable")?;
 
     Ok(())
 }
@@ -146,7 +161,12 @@ pub fn ensure_latest_bin() -> Result<()> {
         return Ok(());
     }
 
-    let current_exe = get_current_exe()?;
+    if env::var("SKIP_LATEST_BIN_CHECK").is_ok() {
+        debug!("Environment variable SKIP_LATEST_BIN_CHECK is set, skipping check for latest bin");
+        return Ok(());
+    }
+
+    let current_exe = get_canonicalized_current_exe()?;
     let crate_root = get_crate_root()?;
 
     debug!("current_exe: {}", current_exe.display());
