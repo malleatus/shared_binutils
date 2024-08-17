@@ -24,6 +24,8 @@ fn should_include(entry: &DirEntry) -> bool {
     if entry.file_type().is_dir() {
         let name = entry.file_name().to_str().unwrap_or("");
         name != "target" && name != ".git"
+    } else if entry.file_type().is_file() {
+        entry.file_name().to_string_lossy() != "Cargo.lock"
     } else {
         true
     }
