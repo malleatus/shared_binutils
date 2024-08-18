@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use std::ffi;
 use std::fs;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use std::time::SystemTime;
@@ -122,36 +122,17 @@ pub fn exec_updated_bin() -> Result<()> {
     // as possible
     let current_exe = env::current_exe().context("Failed to get the current executable path")?;
 
-    let exe_cstring = ffi::CString::new(
-        current_exe
-            .to_str()
-            .context("Executable path is not valid UTF-8")?,
-    )
-    .context("Failed to convert executable path to CString")?;
+    // skipping the executable path
+    let args: Vec<String> = env::args().skip(1).collect();
 
-    let args: Vec<ffi::CString> = env::args()
-        .map(|arg| ffi::CString::new(arg).context("Failed to convert argument to CString"))
-        .collect::<Result<Vec<ffi::CString>>>()?;
+    let mut cmd = Command::new(&current_exe);
+    cmd.args(&args);
+    cmd.env("SKIP_LATEST_BIN_CHECK", "1");
 
-    let args_ref: Vec<&ffi::CString> = args.iter().collect();
+    let result = cmd.exec();
 
-    let env_vars: Vec<ffi::CString> = env::vars()
-        .map(|(key, value)| {
-            ffi::CString::new(format!("{}={}", key, value))
-                .with_context(|| format!("Failed to convert env var to CString: {}={}", key, value))
-        })
-        .chain(std::iter::once(
-            ffi::CString::new("SKIP_LATEST_BIN_CHECK=1")
-                .context("Failed to convert `SKIP_LATEST_BIN_CHECK=1` to CString"),
-        ))
-        .collect::<Result<Vec<ffi::CString>>>()?;
-
-    let env_ref: Vec<&ffi::CStr> = env_vars.iter().map(|var| var.as_c_str()).collect();
-
-    nix::unistd::execve(&exe_cstring, &args_ref, &env_ref)
-        .context("Failed to execve the current executable")?;
-
-    Ok(())
+    // If we reach this point, it means that the exec failed
+    anyhow::bail!("Failed to exec updated binary: {:?}", result);
 }
 
 pub fn ensure_latest_bin() -> Result<()> {
