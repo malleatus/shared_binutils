@@ -9,7 +9,7 @@ on:
       - "main"
       - "master"
     paths:
-      - "config/"
+      - "config/**"
   workflow_dispatch:
 
 jobs:
