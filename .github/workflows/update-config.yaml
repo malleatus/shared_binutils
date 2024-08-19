@@ -10,6 +10,7 @@ on:
       - "master"
     paths:
       - "config/**"
+      - ".github/workflows/update-config.yaml"
   workflow_dispatch:
 
 jobs:
