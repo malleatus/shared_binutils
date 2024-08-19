@@ -1,0 +1,18 @@
+[package]
+name = "internal-bins"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.5.3", features = ["derive"] }
+latest_bin = { path = "../latest_bin" }
+schemars = "0.8.21"
+serde_json = "1.0.122"
+toml = "0.8.12"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+config = { path = "../config" }
+
+[dev-dependencies]
+tempfile = "3.10.1"
