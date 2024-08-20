@@ -188,6 +188,22 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
         debug!("Reading config from: {}", config_path.display());
 
         let lua = Lua::new();
+        let globals = lua.globals();
+        let config_dir = config_path.parent().map(PathBuf::from).unwrap_or_else(|| {
+            let home_dir = env::var("HOME").expect("HOME environment variable not set");
+            PathBuf::from(home_dir)
+        });
+
+        let package: mlua::Table = globals.get("package")?;
+        let package_path: String = package.get("path")?;
+
+        let new_package_path = format!(
+            "{}/?.lua;{}/?/init.lua;{}",
+            config_dir.display(),
+            config_dir.display(),
+            package_path
+        );
+        package.set("path", new_package_path)?;
         let config_str = fs::read_to_string(&config_path).with_context(|| {
             format!(
                 "Could not read config file from: {}",
@@ -373,6 +389,100 @@ mod tests {
                                             "echo 'Hello, world!'",
                                         ),
                                     ),
+                                    env: None,
+                                },
+                            ],
+                        },
+                    ],
+                    default_session: Some(
+                        "Test Session",
+                    ),
+                },
+            ),
+            shell_caching: None,
+        }
+        "###);
+    }
+
+    #[test]
+    fn test_read_config_can_require_local_lua_files() {
+        let env = setup_test_environment();
+
+        fixturify::write(
+            &env.config_dir,
+            BTreeMap::from([
+                (
+                    "local.config.lua".to_string(),
+                    r###"
+                    local config = require("./other/config");
+                    local additional_sessions = {
+                        {
+                            name = "huzza!",
+                            windows = { { name = "wheeeeee" } }
+                        },
+                    };
+
+                    for _, session in ipairs(additional_sessions) do
+                        table.insert(config.tmux.sessions, session)
+                    end
+
+                    return config;
+                    "###
+                    .to_string(),
+                ),
+                (
+                    "other/config.lua".to_string(),
+                    r###"return {
+                        tmux = {
+                            default_session = "Test Session",
+                            sessions = {
+                                {
+                                    name = "Test Session",
+                                    windows = {
+                                        {
+                                            name = "Test Window",
+                                            command = "echo 'Hello, world!'",
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }"###
+                        .to_string(),
+                ),
+            ]),
+        )
+        .unwrap();
+
+        let config = read_config(None).expect("error reading from config");
+
+        assert_debug_snapshot!(config, @r###"
+        Config {
+            tmux: Some(
+                Tmux {
+                    sessions: [
+                        Session {
+                            name: "Test Session",
+                            windows: [
+                                Window {
+                                    name: "Test Window",
+                                    path: None,
+                                    command: Some(
+                                        Single(
+                                            "echo 'Hello, world!'",
+                                        ),
+                                    ),
+                                    env: None,
+                                },
+                            ],
+                        },
+                        Session {
+                            name: "huzza!",
+                            windows: [
+                                Window {
+                                    name: "wheeeeee",
+                                    path: None,
+                                    command: None,
                                     env: None,
                                 },
                             ],
