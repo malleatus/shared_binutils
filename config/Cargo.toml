@@ -19,3 +19,4 @@ regex = "1.10.6"
 insta = { version = "1.36.1" }
 tempfile = "3.10.1"
 test_utils = { path = "../test_utils" }
+fixturify = { path = "../fixturify" }
