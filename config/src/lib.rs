@@ -80,13 +80,10 @@ pub struct Window {
     pub env: Option<BTreeMap<String, String>>,
 }
 
-pub fn default_config() -> Config {
+fn default_config() -> Config {
     Config {
         shell_caching: None,
-        tmux: Some(Tmux {
-            default_session: None,
-            sessions: vec![],
-        }),
+        tmux: None,
     }
 }
 
@@ -317,12 +314,7 @@ mod tests {
 
         assert_debug_snapshot!(config, @r###"
         Config {
-            tmux: Some(
-                Tmux {
-                    sessions: [],
-                    default_session: None,
-                },
-            ),
+            tmux: None,
             shell_caching: None,
         }
         "###);
