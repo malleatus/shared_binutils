@@ -1,8 +1,7 @@
+use mlua::{Lua, LuaSerdeExt};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, trace};
 
@@ -152,27 +151,6 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
     }
 }
 
-pub fn write_config(config: &Config, config_path: Option<PathBuf>) -> Result<()> {
-    let config_path = if let Some(config_path) = config_path {
-        config_path
-    } else {
-        let home_dir = env::var("HOME").expect("HOME environment variable not set");
-        Path::new(&home_dir).join(".config/binutils/config.yaml")
-    };
-
-    let yaml_str = serde_yml::to_string(&config)?;
-
-    debug!("Writing config to: {}", config_path.display());
-    trace!("Config: {}", yaml_str);
-
-    let config_dir = config_path.parent().unwrap();
-    fs::create_dir_all(config_dir)?;
-
-    let mut file = File::create(config_path)?;
-    file.write_all(yaml_str.as_bytes())?;
-    Ok(())
-}
-
 pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
     let config_path = match config_path {
         Some(config_path) => {
@@ -197,11 +175,11 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
 
             let home_dir = env::var("HOME").expect("HOME environment variable not set");
 
-            let local_config_file = Path::new(&home_dir).join(".config/binutils/local.config.yaml");
+            let local_config_file = Path::new(&home_dir).join(".config/binutils/local.config.lua");
             if local_config_file.exists() {
                 local_config_file
             } else {
-                Path::new(&home_dir).join(".config/binutils/config.yaml")
+                Path::new(&home_dir).join(".config/binutils/config.lua")
             }
         }
     };
@@ -209,19 +187,20 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
     let config = if config_path.is_file() {
         debug!("Reading config from: {}", config_path.display());
 
-        let yaml_str = fs::read_to_string(&config_path).with_context(|| {
+        let lua = Lua::new();
+        let config_str = fs::read_to_string(&config_path).with_context(|| {
             format!(
                 "Could not read config file from: {}",
                 &config_path.display()
             )
         })?;
-        let config: Config = serde_yml::from_str(&yaml_str).map_err(|e| {
-            anyhow::anyhow!(
-                "Could not parse config file: {}.\n\nParsing error:\n{}",
-                &config_path.display(),
-                e
-            )
-        })?;
+        let result = lua
+            .load(&config_str)
+            .set_name(config_path.to_string_lossy())
+            .eval()?;
+
+        let config: Config = lua.from_value(result)?;
+
         config
     } else {
         debug!(
@@ -334,27 +313,17 @@ mod tests {
     }
 
     #[test]
-    fn test_read_default_custom_config_file_path() {
+    fn test_read_config_custom_config_file_path() {
         let env = setup_test_environment();
 
-        let config_file_path = env.config_dir.join("custom-config.yaml");
-        let config = default_config();
-
-        let mut file = File::create(&config_file_path).expect("Could not create file");
-        let yaml_str = serde_yml::to_string(&config).expect("could not convert to yaml");
-        file.write_all(yaml_str.as_bytes())
-            .expect("could not write to config");
+        let config_file_path = env.config_dir.join("custom-config.lua");
+        fs::write(&config_file_path, r###"return {}"###).unwrap();
 
         let config = read_config(Some(config_file_path)).expect("error reading from config");
 
         assert_debug_snapshot!(config, @r###"
         Config {
-            tmux: Some(
-                Tmux {
-                    sessions: [],
-                    default_session: None,
-                },
-            ),
+            tmux: None,
             shell_caching: None,
         }
         "###);
@@ -364,27 +333,27 @@ mod tests {
     fn test_read_default_local_config_file() {
         let env = setup_test_environment();
 
-        let config_file_path = env.config_dir.join("local.config.yaml");
-        let config = Config {
-            shell_caching: None,
-            tmux: Some(Tmux {
-                default_session: Some("Test Session".to_string()),
-                sessions: vec![Session {
-                    name: "Test Session".to_string(),
-                    windows: vec![Window {
-                        name: "Test Window".to_string(),
-                        path: None,
-                        command: Some(Command::Single("echo 'Hello, world!'".to_string())),
-                        env: None,
-                    }],
-                }],
-            }),
-        };
+        let config_file_path = env.config_dir.join("local.config.lua");
+        let config_str = r###"
+        return {
+            shell_caching = nil,
+            tmux = {
+                default_session = "Test Session",
+                sessions = {
+                    {
+                        name = "Test Session",
+                        windows = {
+                            {
+                                name = "Test Window",
+                                command = "echo 'Hello, world!'",
+                            }
+                        }
+                    }
+                }
+            }
+        }"###;
 
-        let mut file = File::create(&config_file_path).expect("Could not create file");
-        let yaml_str = serde_yml::to_string(&config).expect("could not convert to yaml");
-        file.write_all(yaml_str.as_bytes())
-            .expect("could not write to config");
+        fs::write(&config_file_path, config_str).expect("Could not write to config file");
 
         let config = read_config(None).expect("error reading from config");
 
@@ -423,30 +392,15 @@ mod tests {
     fn test_read_config_local_config_wins() {
         let env = setup_test_environment();
 
-        let local_config_path = env.config_dir.join("local.config.yaml");
-        let config = Config {
-            shell_caching: None,
-            tmux: None,
-        };
+        let local_config_path = env.config_dir.join("local.config.lua");
+        fs::write(&local_config_path, r###"return {}"###).unwrap();
 
-        let mut file = File::create(&local_config_path).expect("Could not create file");
-        let yaml_str = serde_yml::to_string(&config).expect("could not convert to yaml");
-        file.write_all(yaml_str.as_bytes())
-            .expect("could not write to config");
-
-        let local_config_path = env.config_dir.join("config.yaml");
-        let config = Config {
-            shell_caching: Some(ShellCache {
-                source: "~/foo".to_string(),
-                destination: "~/foo/dist".to_string(),
-            }),
-            tmux: None,
-        };
-
-        let mut file = File::create(&local_config_path).expect("Could not create file");
-        let yaml_str = serde_yml::to_string(&config).expect("could not convert to yaml");
-        file.write_all(yaml_str.as_bytes())
-            .expect("could not write to config");
+        let config_path = &env.config_file;
+        fs::write(
+            config_path,
+            r###"return { shell_caching = { source = "~/foo", destination = "~/foo/dist" } }"###,
+        )
+        .expect("Could not write to config file");
 
         let config = read_config(None).expect("error reading from config");
 
@@ -462,23 +416,53 @@ mod tests {
     fn test_read_config_custom_file_with_tilde() {
         let env = setup_test_environment();
 
-        let config_file_path = env.home.join("custom-config.yaml");
-        let config = default_config();
+        let config_file_path = env.home.join("custom-config.lua");
+        let config_str = r###"
+        {
+            tmux = {
+                default_session = "Test Session",
+                sessions = {
+                    {
+                        name = "Test Session",
+                        windows = {
+                            {
+                                name = "Test Window",
+                                command = "echo 'Hello, world!'",
+                            }
+                        }
+                    }
+                }
+            }
+        }"###;
+        fs::write(&config_file_path, config_str).unwrap();
 
-        let mut file = File::create(config_file_path).expect("Could not create file");
-        let yaml_str = serde_yml::to_string(&config).expect("could not convert to yaml");
-        file.write_all(yaml_str.as_bytes())
-            .expect("could not write to config");
-
-        let config = read_config(Some(PathBuf::from("~/custom-config.yaml")))
-            .expect("could not read config");
+        let config =
+            read_config(Some(PathBuf::from("~/custom-config.lua"))).expect("could not read config");
 
         assert_debug_snapshot!(config, @r###"
         Config {
             tmux: Some(
                 Tmux {
-                    sessions: [],
-                    default_session: None,
+                    sessions: [
+                        Session {
+                            name: "Test Session",
+                            windows: [
+                                Window {
+                                    name: "Test Window",
+                                    path: None,
+                                    command: Some(
+                                        Single(
+                                            "echo 'Hello, world!'",
+                                        ),
+                                    ),
+                                    env: None,
+                                },
+                            ],
+                        },
+                    ],
+                    default_session: Some(
+                        "Test Session",
+                    ),
                 },
             ),
             shell_caching: None,
@@ -487,20 +471,14 @@ mod tests {
     }
 
     #[test]
-    fn test_read_config_invalid_yaml() -> Result<()> {
+    fn test_read_config_invalid_lua() -> Result<()> {
         let env = setup_test_environment();
 
-        let mut file = File::create(&env.config_file)?;
-        file.write_all(b"invalid yaml contents")?;
+        fs::write(&env.config_file, b"invalid lua contents")?;
 
         let err = read_config(None).unwrap_err();
 
-        assert_snapshot!(stabilize_home_paths(&env, &err.to_string()), @r###"
-        Could not parse config file: ~/.config/binutils/config.yaml.
-
-        Parsing error:
-        invalid type: string "invalid yaml contents", expected struct Config
-        "###);
+        assert_snapshot!(stabilize_home_paths(&env, &err.to_string()), @r###"syntax error: [string "/var/folders/4t/s4lq1gzn4b703hcbnf7sl93h0000g..."]:1: syntax error near 'lua'"###);
 
         Ok(())
     }
@@ -516,10 +494,32 @@ mod tests {
     }
 
     #[test]
-    fn test_write_and_read_config_tmux_windows_without_path() {
+    fn test_read_config_tmux_windows_without_path() {
         let env = setup_test_environment();
 
-        let config = Config {
+        let config_str = r###"
+        return {
+            tmux = {
+                sessions = {
+                    {
+                        name = "Test Session",
+                        windows = {
+                            {
+                                name = "Test Window",
+                                command = "echo 'Hello, world!'"
+                            }
+                        }
+                    }
+                },
+                default_session = "Test Session"
+            }
+        }
+        "###;
+        fs::write(&env.config_file, config_str).unwrap();
+
+        let actual = read_config(None).expect("Failed to read config");
+
+        let expected = Config {
             shell_caching: None,
             tmux: Some(Tmux {
                 default_session: Some("Test Session".to_string()),
@@ -535,156 +535,6 @@ mod tests {
             }),
         };
 
-        write_config(&config, None).expect("Failed to write config");
-
-        let written_yaml_str = fs::read_to_string(&env.config_file).expect("failed to read config");
-
-        assert_snapshot!(written_yaml_str, @r###"
-        tmux:
-          sessions:
-          - name: Test Session
-            windows:
-            - name: Test Window
-              command: echo 'Hello, world!'
-          default_session: Test Session
-        "###);
-
-        // Read the config
-        let read_config = read_config(None).expect("Failed to read config");
-
-        assert_eq!(config, read_config);
-    }
-
-    #[test]
-    fn test_write_and_read_config() {
-        let env = setup_test_environment();
-
-        let config = Config {
-            shell_caching: None,
-            tmux: Some(Tmux {
-                default_session: Some("Test Session".to_string()),
-                sessions: vec![Session {
-                    name: "Test Session".to_string(),
-                    windows: vec![Window {
-                        name: "Test Window".to_string(),
-                        path: Some(PathBuf::from("/some/path")),
-                        command: Some(Command::Single("echo 'Hello, world!'".to_string())),
-                        env: None,
-                    }],
-                }],
-            }),
-        };
-
-        write_config(&config, None).expect("Failed to write config");
-
-        let written_yaml_str = fs::read_to_string(&env.config_file).expect("failed to read config");
-
-        assert_snapshot!(written_yaml_str, @r###"
-        tmux:
-          sessions:
-          - name: Test Session
-            windows:
-            - name: Test Window
-              path: /some/path
-              command: echo 'Hello, world!'
-          default_session: Test Session
-        "###);
-
-        // Read the config
-        let read_config = read_config(None).expect("Failed to read config");
-
-        assert_eq!(config.tmux, read_config.tmux);
-    }
-
-    #[test]
-    fn test_write_config() {
-        let env = setup_test_environment();
-
-        let config = Config {
-            shell_caching: None,
-            tmux: Some(Tmux {
-                default_session: Some("Test Session".to_string()),
-                sessions: vec![
-                    Session {
-                        name: "Test Session".to_string(),
-                        windows: vec![
-                            Window {
-                                name: "Test Window".to_string(),
-                                path: Some(PathBuf::from("/some/path")),
-                                command: Some(Command::Single("echo 'Hello, world!'".to_string())),
-                                env: None,
-                            },
-                            Window {
-                                name: "Second Window".to_string(),
-                                path: Some(PathBuf::from("/some/other-path")),
-                                command: Some(Command::Single("nvim".to_string())),
-                                env: None,
-                            },
-                            Window {
-                                name: "Window without path".to_string(),
-                                path: None,
-                                command: Some(Command::Single("nvim".to_string())),
-                                env: None,
-                            },
-                        ],
-                    },
-                    Session {
-                        name: "Second Session".to_string(),
-                        windows: vec![
-                            Window {
-                                name: "Fourth Window".to_string(),
-                                path: Some(env.home.clone()),
-                                command: Some(Command::Multiple(vec![
-                                    "echo 'Hello, world!'".to_string(),
-                                    "echo 'Goodbye, world!'".to_string(),
-                                ])),
-                                env: None,
-                            },
-                            Window {
-                                name: "Window without command".to_string(),
-                                path: Some(PathBuf::from("/some/other-path")),
-                                command: None,
-                                env: None,
-                            },
-                        ],
-                    },
-                ],
-            }),
-        };
-
-        // Write the config
-        write_config(&config, None).expect("Failed to write config");
-
-        // Assert that the config file was created
-        let written_config = fs::read_to_string(&env.config_file).expect("Failed to read config");
-
-        assert_snapshot!(written_config, @r###"
-        tmux:
-          sessions:
-          - name: Test Session
-            windows:
-            - name: Test Window
-              path: /some/path
-              command: echo 'Hello, world!'
-            - name: Second Window
-              path: /some/other-path
-              command: nvim
-            - name: Window without path
-              command: nvim
-          - name: Second Session
-            windows:
-            - name: Fourth Window
-              path: '~'
-              command:
-              - echo 'Hello, world!'
-              - echo 'Goodbye, world!'
-            - name: Window without command
-              path: /some/other-path
-          default_session: Test Session
-        "###);
-
-        let final_config = read_config(None).expect("Failed to read config");
-
-        assert_eq!(config, final_config);
+        assert_eq!(expected, actual);
     }
 }
