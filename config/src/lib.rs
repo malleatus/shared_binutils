@@ -78,6 +78,11 @@ pub struct Window {
     /// Additional environment variables to set in the window.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<BTreeMap<String, String>>,
+
+    /// The names of any of the workspaces crates that provide binaries that should be available on
+    /// $PATH inside the new window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_crates: Option<Vec<String>>,
 }
 
 fn default_config() -> Config {
@@ -382,6 +387,7 @@ mod tests {
                                         ),
                                     ),
                                     env: None,
+                                    linked_crates: None,
                                 },
                             ],
                         },
@@ -465,6 +471,7 @@ mod tests {
                                         ),
                                     ),
                                     env: None,
+                                    linked_crates: None,
                                 },
                             ],
                         },
@@ -476,6 +483,7 @@ mod tests {
                                     path: None,
                                     command: None,
                                     env: None,
+                                    linked_crates: None,
                                 },
                             ],
                         },
@@ -558,6 +566,7 @@ mod tests {
                                         ),
                                     ),
                                     env: None,
+                                    linked_crates: None,
                                 },
                             ],
                         },
@@ -652,6 +661,7 @@ mod tests {
                         path: None,
                         command: Some(Command::Single("echo 'Hello, world!'".to_string())),
                         env: None,
+                        linked_crates: None,
                     }],
                 }],
             }),
