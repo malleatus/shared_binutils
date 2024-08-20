@@ -478,7 +478,27 @@ mod tests {
 
         let err = read_config(None).unwrap_err();
 
-        assert_snapshot!(stabilize_home_paths(&env, &err.to_string()), @r###"syntax error: [string "/var/folders/4t/s4lq1gzn4b703hcbnf7sl93h0000g..."]:1: syntax error near 'lua'"###);
+        // when the filename is very long it gets truncated in the lua syntax error, on macos the
+        // tmpdir path is very long
+        let error_string = stabilize_home_paths(&env, &err.to_string());
+
+        let re = regex::Regex::new(r#"\[string "(.*?)"\]"#).unwrap();
+        let error_string = re.replace_all(&error_string, |caps: &regex::Captures| {
+            let path = &caps[1];
+            println!("len: {}; value: {}", path.len(), path);
+            if path.len() == 48 {
+                let truncated_path = &env.home.to_string_lossy()[..45];
+                assert_eq!(path, format!("{}...", truncated_path));
+            } else {
+                assert_eq!(
+                    path,
+                    stabilize_home_paths(&env, &env.config_file.to_string_lossy())
+                );
+            }
+            "[string \"{truncated path}\"]"
+        });
+
+        assert_snapshot!(error_string, @r###"syntax error: [string "{truncated path}"]:1: syntax error near 'lua'"###);
 
         Ok(())
     }
