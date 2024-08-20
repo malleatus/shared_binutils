@@ -35,7 +35,11 @@ fn should_include(entry: &DirEntry) -> bool {
 // (that we are referencing via `.cargo/config.toml` override). In that case we want to check both
 // the local binutils workspace and the local shared_binutils workspace.
 pub fn has_updated_files<P: AsRef<Path>>(dir: P, current_exe_mod_time: SystemTime) -> Result<bool> {
-    for entry in WalkDir::new(dir).into_iter().filter_entry(should_include) {
+    for entry in WalkDir::new(dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(should_include)
+    {
         let entry = entry?;
         trace!("evaluating entry: {:?}", entry.path());
         if entry.file_type().is_file() {
