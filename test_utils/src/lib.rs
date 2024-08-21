@@ -101,7 +101,12 @@ pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePa
         for bin in package.bins {
             let bin_rs = src_bin_dir.join(format!("{}.rs", bin.name));
             let contents = bin.contents.unwrap_or_else(|| {
-                "fn main() {{\n    println!(\"{{:?}}\", std::env::current_exe().unwrap());\n}}\n".to_string()
+                r###"
+                fn main() {
+                    println!("{:?}", std::env::current_exe().unwrap());
+                }
+                "###
+                .to_string()
             });
             fs::write(bin_rs, contents).unwrap();
         }
