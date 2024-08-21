@@ -17,3 +17,4 @@ config = { path = "../config" }
 
 [dev-dependencies]
 tempfile = "3.10.1"
+insta = "1.39.0"

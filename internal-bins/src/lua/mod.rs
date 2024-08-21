@@ -230,3 +230,163 @@ fn generate_lua_enum_alias(item_enum: &syn::ItemEnum) -> String {
 
     alias_definition
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::assert_snapshot;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_run_generates_lua_types() {
+        // Create a temporary directory
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        fs::create_dir_all(temp_dir.path().join("src")).unwrap();
+
+        let source_file = temp_dir.path().join("src/lib.rs");
+        fs::write(
+            &source_file,
+            r###"
+/// Configuration for the application.
+pub struct Config {
+    /// Optional tmux configuration. Including sessions and windows to be created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tmux: Option<Tmux>,
+
+    /// Optional configuration for cache-shell-setup
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_caching: Option<ShellCache>,
+
+    /// Optional list of crate locations (used as a lookup path for tmux windows `linked_crates`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crate_locations: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ShellCache {
+    pub source: String,
+    pub destination: String,
+}
+
+/// Tmux configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Tmux {
+    /// List of tmux sessions.
+    pub sessions: Vec<Session>,
+
+    /// The default session to attach to when `startup-tmux --attach` is ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_session: Option<String>,
+}
+
+/// Configuration for a tmux session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Session {
+    /// Name of the session.
+    pub name: String,
+    /// List of windows in the session.
+    pub windows: Vec<Window>,
+}
+
+/// Command to be executed in a tmux window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Command {
+    /// A single command as a string.
+    Single(String),
+    /// Multiple commands as a list of strings.
+    Multiple(Vec<String>),
+}
+
+/// Configuration for a tmux window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Window {
+    /// Name of the window.
+    pub name: String,
+    /// Optional path to set as the working directory for the window.
+    #[serde(
+        default,
+        serialize_with = "path_to_string",
+        deserialize_with = "string_to_path",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub path: Option<PathBuf>,
+
+    /// Optional command to run in the window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<Command>,
+
+    /// Additional environment variables to set in the window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env: Option<BTreeMap<String, String>>,
+
+    /// The names of any of the workspaces crates that provide binaries that should be available on
+    /// $PATH inside the new window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_crates: Option<Vec<String>>,
+}
+        "###,
+        )
+        .unwrap();
+
+        let output_path = temp_dir.path().join("init.lua");
+
+        process_file(
+            source_file,
+            output_path.clone(),
+            vec![
+                "Config",
+                "ShellCache",
+                "Tmux",
+                "Session",
+                "Command",
+                "Window",
+            ],
+        );
+
+        assert_snapshot!(fs::read_to_string(output_path).unwrap(), @r###"
+        ---  Configuration for the application.
+        ---@class Config
+        ---  Optional tmux configuration. Including sessions and windows to be created.
+        ---@field tmux Tmux|nil
+        ---  Optional configuration for cache-shell-setup
+        ---@field shell_caching ShellCache|nil
+        ---  Optional list of crate locations (used as a lookup path for tmux windows `linked_crates`)
+        ---@field crate_locations string[]|nil
+
+        ---@class ShellCache
+        ---@field source string
+        ---@field destination string
+
+        ---  Tmux configuration.
+        ---@class Tmux
+        ---  List of tmux sessions.
+        ---@field sessions Session[]
+        ---  The default session to attach to when `startup-tmux --attach` is ran.
+        ---@field default_session string|nil
+
+        ---  Configuration for a tmux session.
+        ---@class Session
+        ---  Name of the session.
+        ---@field name string
+        ---  List of windows in the session.
+        ---@field windows Window[]
+
+        ---@alias Command string|string[]
+
+        ---  Configuration for a tmux window.
+        ---@class Window
+        ---  Name of the window.
+        ---@field name string
+        ---  Optional path to set as the working directory for the window.
+        ---@field path string|nil
+        ---  Optional command to run in the window.
+        ---@field command Command|nil
+        ---  Additional environment variables to set in the window.
+        ---@field env table<string, string>|nil
+        ---  The names of any of the workspaces crates that provide binaries that should be available on  $PATH inside the new window.
+        ---@field linked_crates string[]|nil
+
+        "###);
+    }
+}
