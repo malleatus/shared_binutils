@@ -55,13 +55,13 @@ pub fn stabilize_home_paths(env: &TestEnvironment, input: &str) -> String {
 }
 
 pub struct FakePackage {
-    name: String,
-    bins: Vec<FakeBin>,
+    pub name: String,
+    pub bins: Vec<FakeBin>,
 }
 
 pub struct FakeBin {
-    name: String,
-    contents: Option<String>,
+    pub name: String,
+    pub contents: Option<String>,
 }
 
 pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePackage>) {
