@@ -16,7 +16,7 @@ struct Args {
     output: Option<String>,
 }
 
-fn run(args: Vec<String>) -> Result<()> {
+fn generate_json_schema(args: Vec<String>) -> Result<()> {
     let args = Args::parse_from(args);
 
     let dest_path = if let Some(output) = args.output {
@@ -41,6 +41,25 @@ fn run(args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
+fn generate_lua_types() -> Result<()> {
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    internal_bins::lua::process_file(
+        crate_root.join("../config/src/lib.rs"),
+        crate_root.join("../config/init.lua"),
+        vec![
+            "Config",
+            "ShellCache",
+            "Tmux",
+            "Session",
+            "Command",
+            "Window",
+        ],
+    );
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Initialize tracing, use `info` by default
     tracing_subscriber::fmt()
@@ -51,7 +70,10 @@ fn main() -> Result<()> {
 
     latest_bin::ensure_latest_bin()?;
 
-    run(std::env::args().collect())
+    generate_json_schema(std::env::args().collect())?;
+    generate_lua_types()?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -66,7 +88,7 @@ mod tests {
         let config_file_path = temp_dir.path().join("config_schema.json");
 
         // Call the run function (assuming it takes the output directory as an argument)
-        run(vec![
+        generate_json_schema(vec![
             "regenerate-config-schema".to_string(),
             "--output".to_string(),
             config_file_path.to_string_lossy().to_string(),
