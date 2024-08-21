@@ -65,6 +65,8 @@ pub struct FakeBin {
 }
 
 pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePackage>) {
+    fs::create_dir_all(workspace_dir).unwrap();
+
     // Create workspace Cargo.toml
     let workspace_toml = workspace_dir.join("Cargo.toml");
 
