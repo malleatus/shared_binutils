@@ -19,6 +19,10 @@ pub struct Config {
     /// Optional configuration for cache-shell-setup
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell_caching: Option<ShellCache>,
+
+    /// Optional list of crate locations (used as a lookup path for tmux windows `linked_crates`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crate_locations: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -87,6 +91,7 @@ pub struct Window {
 
 fn default_config() -> Config {
     Config {
+        crate_locations: None,
         shell_caching: None,
         tmux: None,
     }
@@ -321,6 +326,7 @@ mod tests {
         Config {
             tmux: None,
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -338,6 +344,7 @@ mod tests {
         Config {
             tmux: None,
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -398,6 +405,7 @@ mod tests {
                 },
             ),
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -494,6 +502,7 @@ mod tests {
                 },
             ),
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -518,6 +527,7 @@ mod tests {
         Config {
             tmux: None,
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -577,6 +587,7 @@ mod tests {
                 },
             ),
             shell_caching: None,
+            crate_locations: None,
         }
         "###);
     }
@@ -651,6 +662,7 @@ mod tests {
         let actual = read_config(None).expect("Failed to read config");
 
         let expected = Config {
+            crate_locations: None,
             shell_caching: None,
             tmux: Some(Tmux {
                 default_session: Some("Test Session".to_string()),
