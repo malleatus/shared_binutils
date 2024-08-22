@@ -6,11 +6,10 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, error, trace};
 
 use anyhow::{Context, Result};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the application.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     /// Optional tmux configuration. Including sessions and windows to be created.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -25,14 +24,14 @@ pub struct Config {
     pub crate_locations: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellCache {
     pub source: String,
     pub destination: String,
 }
 
 /// Tmux configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Tmux {
     /// List of tmux sessions.
     pub sessions: Vec<Session>,
@@ -43,7 +42,7 @@ pub struct Tmux {
 }
 
 /// Configuration for a tmux session.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     /// Name of the session.
     pub name: String,
@@ -52,7 +51,7 @@ pub struct Session {
 }
 
 /// Command to be executed in a tmux window.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Command {
     /// A single command as a string.
@@ -62,7 +61,7 @@ pub enum Command {
 }
 
 /// Configuration for a tmux window.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Window {
     /// Name of the window.
     pub name: String,
