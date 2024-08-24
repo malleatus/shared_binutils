@@ -17,8 +17,8 @@ pub struct TestEnvironment {
 impl Drop for TestEnvironment {
     fn drop(&mut self) {
         match &self.original_home {
-            Some(home) => unsafe { env::set_var("HOME", home) },
-            None => unsafe { env::remove_var("HOME") },
+            Some(home) => env::set_var("HOME", home),
+            None => env::remove_var("HOME"),
         }
     }
 }
@@ -28,14 +28,12 @@ pub fn setup_test_environment() -> TestEnvironment {
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let temp_home = temp_dir.into_path();
 
-    unsafe {
-        env::set_var(
-            "HOME",
-            temp_home
-                .to_str()
-                .expect("Failed to convert temp path to str"),
-        );
-    }
+    env::set_var(
+        "HOME",
+        temp_home
+            .to_str()
+            .expect("Failed to convert temp path to str"),
+    );
 
     // Ensure config directory exists
     let config_dir = temp_home.join(".config/binutils");

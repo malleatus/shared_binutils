@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["config", "fixturify", "internal-bins", "latest_bin", "test_utils"]
+members = ["config", "fixturify", "internal-bins", "latest_bin", "test_utils", "global"]
 
 [profile.dev.package]
 insta.opt-level = 3
