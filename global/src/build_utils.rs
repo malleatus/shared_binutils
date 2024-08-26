@@ -149,10 +149,24 @@ mod tests {
         );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
+
+        #[cfg(target_os = "macos")]
         assert_eq!(
             stdout.trim(),
             format!("\"{}\"", bin_path.to_string_lossy().trim()),
             "stdout does not match expected output"
         );
+
+        #[cfg(target_os = "linux")]
+        {
+            let workspace_target_dir = temp_dir.path().join("target").join(profile);
+            let expected_current_exe = workspace_target_dir.join("hello_world");
+
+            assert_eq!(
+                stdout.trim(),
+                format!("\"{}\"", expected_current_exe.to_string_lossy().trim()),
+                "stdout does not match expected output on Linux"
+            );
+        }
     }
 }
