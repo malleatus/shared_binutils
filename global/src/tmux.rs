@@ -390,7 +390,7 @@ mod tests {
     };
 
     use anyhow::Result;
-    use insta::{assert_debug_snapshot, assert_yaml_snapshot};
+    use insta::assert_debug_snapshot;
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
     use test_utils::{create_workspace_with_packages, FakeBin, FakePackage};
@@ -647,13 +647,13 @@ mod tests {
         let commands = startup_tmux(&config, &options)?;
         let commands = sanitize_commands_executed(commands, &options, None);
 
-        assert_yaml_snapshot!(commands, @r###"
-        ---
-        - "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar"
-        - "tmux -L [SOCKET_NAME] new-window -t foo: -n baz"
-        - "tmux -L [SOCKET_NAME] new-window -t foo: -n qux"
-        - "tmux -L [SOCKET_NAME] new-window -t foo: -n derp"
-        - "tmux attach -t foo",
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo: -n baz",
+            "tmux -L [SOCKET_NAME] new-window -t foo: -n qux",
+            "tmux -L [SOCKET_NAME] new-window -t foo: -n derp",
+        ]
         "###);
 
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
@@ -706,9 +706,10 @@ mod tests {
         let commands = startup_tmux(&config, &options)?;
         let commands = sanitize_commands_executed(commands, &options, None);
 
-        assert_yaml_snapshot!(commands, @r###"
-        ---
-        - "tmux -L [SOCKET_NAME] new-window -t foo: -n bar"
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-window -t foo: -n bar",
+        ]
         "###);
 
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
@@ -757,10 +758,7 @@ mod tests {
         let commands = startup_tmux(&config, &options)?;
         let commands = sanitize_commands_executed(commands, &options, None);
 
-        assert_yaml_snapshot!(commands, @r###"
-        ---
-        []
-        "###);
+        assert_debug_snapshot!(commands, @"[]");
 
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
         {
@@ -818,10 +816,11 @@ mod tests {
 
         let commands =
             sanitize_commands_executed(commands, &options, Some(additional_replacements));
-        assert_yaml_snapshot!(commands, @r###"
-        ---
-        - "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar -e BAZ=qux -e FOO=bar"
-        - "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'echo \"$FOO-$BAZ\" > /tmp/random-value/some-file.txt' Enter"
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar -e BAZ=qux -e FOO=bar",
+            "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'echo \"$FOO-$BAZ\" > /tmp/random-value/some-file.txt' Enter",
+        ]
         "###);
 
         wait_for_file(
@@ -877,10 +876,11 @@ mod tests {
 
         let commands =
             sanitize_commands_executed(commands, &options, Some(additional_replacements));
-        assert_yaml_snapshot!(commands, @r###"
-        ---
-        - "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar"
-        - "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'touch /tmp/random-value/some-file.txt' Enter"
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
+            "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'touch /tmp/random-value/some-file.txt' Enter",
+        ]
         "###);
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
         {
