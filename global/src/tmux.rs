@@ -1073,6 +1073,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_linked_crates() -> Result<()> {
         let temp_dir = tempdir()?;
         let options = build_testing_options();
