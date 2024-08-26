@@ -498,6 +498,9 @@ mod tests {
     }
 
     fn build_testing_options() -> TestingTmuxOptions {
+        // Make tests stable regardless of if we are within a TMUX session or not
+        unsafe { env::remove_var("TMUX") }
+
         let options = TestingTmuxOptions {
             dry_run: false,
             debug: false,
@@ -653,6 +656,7 @@ mod tests {
             "tmux -L [SOCKET_NAME] new-window -t foo: -n baz",
             "tmux -L [SOCKET_NAME] new-window -t foo: -n qux",
             "tmux -L [SOCKET_NAME] new-window -t foo: -n derp",
+            "tmux attach",
         ]
         "###);
 
@@ -709,6 +713,7 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-window -t foo: -n bar",
+            "tmux attach",
         ]
         "###);
 
@@ -758,7 +763,11 @@ mod tests {
         let commands = startup_tmux(&config, &options)?;
         let commands = sanitize_commands_executed(commands, &options, None);
 
-        assert_debug_snapshot!(commands, @"[]");
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux attach",
+        ]
+        "###);
 
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
         {
@@ -820,6 +829,7 @@ mod tests {
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar -e BAZ=qux -e FOO=bar",
             "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'echo \"$FOO-$BAZ\" > /tmp/random-value/some-file.txt' Enter",
+            "tmux attach",
         ]
         "###);
 
@@ -880,6 +890,7 @@ mod tests {
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
             "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'touch /tmp/random-value/some-file.txt' Enter",
+            "tmux attach",
         ]
         "###);
         assert_debug_snapshot!(gather_tmux_state(&options), @r###"
