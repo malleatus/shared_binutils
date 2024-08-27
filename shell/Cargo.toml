@@ -1,0 +1,15 @@
+[package]
+name = "shell"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["David J. Hamilton <david@hamilton.gg>"]
+
+[dependencies]
+anyhow = "1.0.79"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[dev-dependencies]
+insta = { version = "1.36.1" }
+tempfile = "3.10.1"
