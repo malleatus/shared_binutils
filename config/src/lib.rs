@@ -415,7 +415,7 @@ mod tests {
 
         fixturify::write(
             &env.config_dir,
-            BTreeMap::from([
+            &BTreeMap::from([
                 (
                     "local.config.lua".to_string(),
                     r###"
