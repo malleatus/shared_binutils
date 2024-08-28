@@ -76,18 +76,18 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
 ///     Ok(())
 /// }
 /// ```
-pub fn write<S: AsRef<Path>>(to: S, file_map: BTreeMap<String, String>) -> Result<()> {
+pub fn write<S: AsRef<Path>>(to: S, file_map: &BTreeMap<String, String>) -> Result<()> {
     let base_path = to.as_ref();
 
     for (relative_path, content) in file_map {
-        let full_path = base_path.join(&relative_path);
+        let full_path = base_path.join(relative_path);
 
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directories for path: {:?}", parent))?;
         }
 
-        fs::write(&full_path, &content).with_context(|| {
+        fs::write(&full_path, content).with_context(|| {
             format!("Failed to write file: {:?}, with:\n{}", full_path, content)
         })?;
     }
@@ -138,7 +138,7 @@ mod tests {
             ("other/path.txt".to_string(), "Hello, world!".to_string()),
         ]);
 
-        write(dir.path(), file_map)?;
+        write(dir.path(), &file_map)?;
 
         let file_path = dir.path().join("test.txt");
         let content = fs::read_to_string(file_path)?;
@@ -155,7 +155,7 @@ mod tests {
 
         let file_map = read(dir.path())?;
         let new_dir = tempdir()?;
-        write(new_dir.path(), file_map.clone())?;
+        write(new_dir.path(), &file_map)?;
 
         let updated_file_map = read(new_dir.path())?;
 
