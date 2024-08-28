@@ -300,7 +300,7 @@ mod tests {
             ),
         ]);
 
-        fixturify::write(base_dir, source_files).unwrap();
+        fixturify::write(base_dir, &source_files).unwrap();
 
         let source_dir = base_dir.join("zsh");
         let dest_dir = base_dir.join("zsh/dist");
@@ -338,7 +338,7 @@ mod tests {
             ),
         ]);
 
-        fixturify::write(&env.home, source_files).unwrap();
+        fixturify::write(&env.home, &source_files).unwrap();
 
         run(vec![
             "cache-shell-setup".to_string(),
@@ -385,7 +385,7 @@ mod tests {
             ),
         ]);
 
-        fixturify::write(&env.home, source_files).unwrap();
+        fixturify::write(&env.home, &source_files).unwrap();
 
         run(vec![]).unwrap();
 
@@ -425,7 +425,7 @@ mod tests {
             ),
         ]);
 
-        fixturify::write(&env.home, source_files).unwrap();
+        fixturify::write(&env.home, &source_files).unwrap();
 
         run(vec![
             "cache-shell-setup".to_string(),
