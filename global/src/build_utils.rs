@@ -69,6 +69,8 @@ pub fn generate_symlinks(working_dir: Option<PathBuf>) -> Result<()> {
     info!("Generating crate local target symlinks for local workspace packages");
     let working_dir = working_dir.unwrap_or(PathBuf::from("."));
 
+    latest_bin::run_cargo_build(&working_dir)?;
+
     // TODO: automatically support both debug and release profiles
     let profile = "debug";
 
@@ -114,6 +116,47 @@ mod tests {
         generate_symlinks(Some(temp_dir.path().to_path_buf())).unwrap();
 
         assert!(crate_target_dir.join("hello_world").exists());
+    }
+
+    #[test]
+    fn test_generate_symlinks_builds() {
+        let temp_dir = tempdir().unwrap();
+        let packages = vec![FakePackage {
+            name: "test_package".to_string(),
+            bins: vec![FakeBin {
+                name: "hello_world".to_string(),
+                contents: None,
+            }],
+        }];
+        create_workspace_with_packages(temp_dir.path(), packages);
+
+        // write a new bin that hasn't been built, after create_workspace_with_packages is called
+        // (which runs cargo build)
+        let new_bin_path = temp_dir
+            .path()
+            .join("test_package")
+            .join("src")
+            .join("bin")
+            .join("goodbye_world.rs");
+
+        fs::write(
+            &new_bin_path,
+            r###"
+            fn main() {
+                println!("goodbye, world!");
+            }
+            "###,
+        )
+        .expect("failed to write file");
+
+        let profile = "debug";
+
+        let package_dir = temp_dir.path().join("test_package");
+        let crate_target_dir = package_dir.join("target").join(profile);
+
+        generate_symlinks(Some(temp_dir.path().to_path_buf())).unwrap();
+
+        assert!(crate_target_dir.join("goodbye_world").exists());
     }
 
     #[test]

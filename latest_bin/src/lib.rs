@@ -94,8 +94,7 @@ pub fn needs_rebuild() -> Result<bool> {
     Ok(needs_rebuild)
 }
 
-pub fn run_cargo_build() -> Result<()> {
-    let crate_root = get_crate_root()?;
+pub fn run_cargo_build(crate_root: &PathBuf) -> Result<()> {
     info!("Running cargo build, in {}", crate_root.display());
 
     if !crate_root.exists() {
@@ -166,7 +165,7 @@ pub fn ensure_latest_bin() -> Result<()> {
     // }
 
     if needs_rebuild()? {
-        run_cargo_build()?;
+        run_cargo_build(&crate_root)?;
         exec_updated_bin()?
     }
 
