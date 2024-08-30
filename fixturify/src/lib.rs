@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
+use ignore::WalkBuilder;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use ignore::WalkBuilder;
 
 /// Reads a file from the given path and returns its contents as a `BTreeMap<String, String>`.
 ///
@@ -31,9 +31,7 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
     let path = from.as_ref();
     let mut file_map = BTreeMap::new();
 
-    let walker = WalkBuilder::new(path)
-        .standard_filters(true)
-        .build();
+    let walker = WalkBuilder::new(path).standard_filters(true).build();
 
     for result in walker {
         let entry = result?;
@@ -175,7 +173,11 @@ mod tests {
     fn test_ignore_git_objects() -> Result<()> {
         let dir = tempdir()?;
         write_file(&dir, "test.txt", "Hello, world!")?;
-        write_file(&dir, ".git/objects/00/6b14c2f67dbf09234f304a8b63b2e56ca8c516", "This should be ignored")?;
+        write_file(
+            &dir,
+            ".git/objects/00/6b14c2f67dbf09234f304a8b63b2e56ca8c516",
+            "This should be ignored",
+        )?;
 
         let result = read(dir.path())?;
         assert_debug_snapshot!(result, @r###"
