@@ -135,13 +135,10 @@ mod tests {
 
         write_file(&dir, "test.txt", "Hello, world!")?;
         write_file(&dir, "other/path.txt", "Hello, world!")?;
-        write_file(&dir, ".gitignore", "ignored.txt")?;
-        write_file(&dir, "ignored.txt", "This should be ignored")?;
 
         let result = read(dir.path())?;
         assert_debug_snapshot!(result, @r###"
         {
-            ".gitignore": "ignored.txt\n",
             "other/path.txt": "Hello, world!\n",
             "test.txt": "Hello, world!\n",
         }
@@ -200,6 +197,27 @@ mod tests {
         let result = read(dir.path())?;
         assert_debug_snapshot!(result, @r###"
         {
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_gitignored_files_in_git_repo() -> Result<()> {
+        let dir = tempdir()?;
+
+        Command::new("git").arg("init").current_dir(&dir).output()?;
+
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(&dir, ".gitignore", "ignored.txt")?;
+        write_file(&dir, "ignored.txt", "This should be ignored")?;
+
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            ".gitignore": "ignored.txt\n",
             "test.txt": "Hello, world!\n",
         }
         "###);
