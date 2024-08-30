@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use ignore::WalkBuilder;
 
 /// Reads a file from the given path and returns its contents as a `BTreeMap<String, String>`.
 ///
@@ -30,8 +31,12 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
     let path = from.as_ref();
     let mut file_map = BTreeMap::new();
 
-    for entry in walkdir::WalkDir::new(path) {
-        let entry = entry?;
+    let walker = WalkBuilder::new(path)
+        .standard_filters(true)
+        .build();
+
+    for result in walker {
+        let entry = result?;
         let path = entry.path();
 
         if path.is_file() {
@@ -118,6 +123,8 @@ mod tests {
         let dir = tempdir()?;
         write_file(&dir, "test.txt", "Hello, world!")?;
         write_file(&dir, "other/path.txt", "Hello, world!")?;
+        write_file(&dir, ".gitignore", "ignored.txt")?;
+        write_file(&dir, "ignored.txt", "This should be ignored")?;
 
         let result = read(dir.path())?;
         assert_debug_snapshot!(result, @r###"
@@ -160,6 +167,22 @@ mod tests {
         let updated_file_map = read(new_dir.path())?;
 
         assert_eq!(file_map, updated_file_map);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ignore_git_objects() -> Result<()> {
+        let dir = tempdir()?;
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(&dir, ".git/objects/00/6b14c2f67dbf09234f304a8b63b2e56ca8c516", "This should be ignored")?;
+
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
 
         Ok(())
     }
