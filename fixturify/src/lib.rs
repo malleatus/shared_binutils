@@ -31,7 +31,18 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
     let path = from.as_ref();
     let mut file_map = BTreeMap::new();
 
-    let walker = WalkBuilder::new(path).standard_filters(true).build();
+    let walker = WalkBuilder::new(path)
+        // NOTE: explicitly disable ignoring hidden files (i.e. we should include `.foo/bar.txt`)
+        // https://docs.rs/ignore/0.4.22/ignore/struct.WalkBuilder.html#method.hidden
+        .hidden(false)
+        .filter_entry(|entry| {
+            // NOTE: since we turn off hidden file ignoring, the `.git` directory is now included
+            entry
+                .path()
+                .file_name()
+                .map_or(true, |file_name| file_name != ".git")
+        })
+        .build();
 
     for result in walker {
         let entry = result?;
@@ -104,6 +115,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use std::fs::{self, File};
     use std::io::Write;
+    use std::process::Command;
     use tempfile::{tempdir, TempDir};
 
     fn write_file(dir: &TempDir, file_name: &str, content: &str) -> Result<()> {
@@ -113,12 +125,14 @@ mod tests {
         }
         let mut file = File::create(&file_path)?;
         writeln!(file, "{}", content)?;
+
         Ok(())
     }
 
     #[test]
     fn test_read() -> Result<()> {
         let dir = tempdir()?;
+
         write_file(&dir, "test.txt", "Hello, world!")?;
         write_file(&dir, "other/path.txt", "Hello, world!")?;
         write_file(&dir, ".gitignore", "ignored.txt")?;
@@ -127,6 +141,7 @@ mod tests {
         let result = read(dir.path())?;
         assert_debug_snapshot!(result, @r###"
         {
+            ".gitignore": "ignored.txt\n",
             "other/path.txt": "Hello, world!\n",
             "test.txt": "Hello, world!\n",
         }
@@ -172,6 +187,9 @@ mod tests {
     #[test]
     fn test_ignore_git_objects() -> Result<()> {
         let dir = tempdir()?;
+
+        Command::new("git").arg("init").current_dir(&dir).output()?;
+
         write_file(&dir, "test.txt", "Hello, world!")?;
         write_file(
             &dir,
@@ -186,6 +204,21 @@ mod tests {
         }
         "###);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_reads_dot_files() -> Result<()> {
+        let dir = tempdir()?;
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(&dir, ".dotfile", "This should not be ignored")?;
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            ".dotfile": "This should not be ignored\n",
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
         Ok(())
     }
 }
