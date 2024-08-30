@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use ignore::WalkBuilder;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -30,8 +31,21 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
     let path = from.as_ref();
     let mut file_map = BTreeMap::new();
 
-    for entry in walkdir::WalkDir::new(path) {
-        let entry = entry?;
+    let walker = WalkBuilder::new(path)
+        // NOTE: explicitly disable ignoring hidden files (i.e. we should include `.foo/bar.txt`)
+        // https://docs.rs/ignore/0.4.22/ignore/struct.WalkBuilder.html#method.hidden
+        .hidden(false)
+        .filter_entry(|entry| {
+            // NOTE: since we turn off hidden file ignoring, the `.git` directory is now included
+            entry
+                .path()
+                .file_name()
+                .map_or(true, |file_name| file_name != ".git")
+        })
+        .build();
+
+    for result in walker {
+        let entry = result?;
         let path = entry.path();
 
         if path.is_file() {
@@ -101,6 +115,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use std::fs::{self, File};
     use std::io::Write;
+    use std::process::Command;
     use tempfile::{tempdir, TempDir};
 
     fn write_file(dir: &TempDir, file_name: &str, content: &str) -> Result<()> {
@@ -110,12 +125,14 @@ mod tests {
         }
         let mut file = File::create(&file_path)?;
         writeln!(file, "{}", content)?;
+
         Ok(())
     }
 
     #[test]
     fn test_read() -> Result<()> {
         let dir = tempdir()?;
+
         write_file(&dir, "test.txt", "Hello, world!")?;
         write_file(&dir, "other/path.txt", "Hello, world!")?;
 
@@ -161,6 +178,65 @@ mod tests {
 
         assert_eq!(file_map, updated_file_map);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_ignore_git_objects() -> Result<()> {
+        let dir = tempdir()?;
+
+        Command::new("git").arg("init").current_dir(&dir).output()?;
+
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(
+            &dir,
+            ".git/objects/00/6b14c2f67dbf09234f304a8b63b2e56ca8c516",
+            "This should be ignored",
+        )?;
+
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_gitignored_files_in_git_repo() -> Result<()> {
+        let dir = tempdir()?;
+
+        Command::new("git").arg("init").current_dir(&dir).output()?;
+
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(&dir, ".gitignore", "ignored.txt")?;
+        write_file(&dir, "ignored.txt", "This should be ignored")?;
+
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            ".gitignore": "ignored.txt\n",
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_reads_dot_files() -> Result<()> {
+        let dir = tempdir()?;
+        write_file(&dir, "test.txt", "Hello, world!")?;
+        write_file(&dir, ".dotfile", "This should not be ignored")?;
+        let result = read(dir.path())?;
+        assert_debug_snapshot!(result, @r###"
+        {
+            ".dotfile": "This should not be ignored\n",
+            "test.txt": "Hello, world!\n",
+        }
+        "###);
         Ok(())
     }
 }
