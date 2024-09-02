@@ -52,9 +52,9 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
     match &config.tmux {
         Some(tmux) => {
             for session in &tmux.sessions {
-                for window in &session.windows {
+                for (index, window) in session.windows.iter().enumerate() {
                     let commands_executed =
-                        ensure_window(&session.name, window, &mut current_state, options)?;
+                        ensure_window(&session.name, window, &index, &mut current_state, options)?;
 
                     for command in commands_executed {
                         commands.push(generate_debug_string_for_command(&command));
@@ -157,6 +157,7 @@ fn determine_commands_for_window(
 fn ensure_window(
     session_name: &str,
     window: &Window,
+    index: &usize,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
 ) -> Result<Vec<Command>> {
@@ -184,7 +185,7 @@ fn ensure_window(
                 .arg(&socket_name)
                 .arg("new-window")
                 .arg("-t")
-                .arg(format!("{}:", session_name))
+                .arg(format!("{}:{}", session_name, index))
                 .arg("-n")
                 .arg(&window.name);
 
@@ -653,9 +654,9 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n baz",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n qux",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n derp",
+            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n baz",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n qux",
+            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n derp",
             "tmux attach",
         ]
         "###);
@@ -712,7 +713,7 @@ mod tests {
 
         assert_debug_snapshot!(commands, @r###"
         [
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n bar",
             "tmux attach",
         ]
         "###);
@@ -722,6 +723,61 @@ mod tests {
             "foo": [
                 "baz",
                 "bar",
+            ],
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_inserts_missing_windows_at_correct_index() -> Result<()> {
+        let options = build_testing_options();
+
+        create_tmux_session("foo", "baz", &options)?;
+
+        let config = Config {
+            crate_locations: None,
+            shell_caching: None,
+            tmux: Some(Tmux {
+                default_session: None,
+                sessions: vec![Session {
+                    name: "foo".to_string(),
+                    windows: vec![
+                        Window {
+                            name: "bar".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                        Window {
+                            name: "baz".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                    ],
+                }],
+            }),
+        };
+
+        let commands = startup_tmux(&config, &options)?;
+        let commands = sanitize_commands_executed(commands, &options, None);
+
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-window -t foo:0 -n bar",
+            "tmux attach",
+        ]
+        "###);
+
+        assert_debug_snapshot!(gather_tmux_state(&options), @r###"
+        {
+            "foo": [
+                "bar",
+                "baz",
             ],
         }
         "###);
