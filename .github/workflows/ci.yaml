@@ -25,6 +25,8 @@ jobs:
       - name: Write basic .tmux.conf
         run: echo 'set -g base-index 1' > ~/.tmux.conf
 
+      - run: tmux -V
+
       - run: cargo nextest run --workspace
 
   lint:
