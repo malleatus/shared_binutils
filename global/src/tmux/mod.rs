@@ -402,7 +402,22 @@ fn run_command(mut cmd: Command, opts: &impl TmuxOptions) -> Result<Command> {
     trace!("Running: {}", generate_debug_string_for_command(&cmd));
 
     if !opts.is_dry_run() {
-        cmd.output()?;
+        match cmd.output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    // TODO: should we bail always or only in testing?
+                    anyhow::bail!(
+                        "Command execution failed (exit code: {}): {:?}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to execute command: {}", e);
+                return Err(e.into());
+            }
+        }
     }
 
     Ok(cmd)
