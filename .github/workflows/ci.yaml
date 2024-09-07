@@ -29,6 +29,10 @@ jobs:
         run: echo 'set -g base-index 1' > ~/.tmux.conf
 
       - run: tmux -V
+      - run: |
+          tmux new-session -d -s temp_session
+          tmux show-options -g
+          tmux kill-session -t temp_session
 
       - run: cargo nextest run --workspace
 
