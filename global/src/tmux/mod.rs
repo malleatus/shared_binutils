@@ -62,18 +62,20 @@ fn determine_base_index() -> Result<usize> {
         .context("Failed to determine `base-index` for tmux")?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if output.status.success() {
-        trace!(
-            "Retrieving `base-index` from `tmux show-option -g base-index` output: {}",
-            stdout
-        );
 
+    trace!(
+        "Retrieving `base-index` from `tmux show-option -g base-index` output: {:?}",
+        output
+    );
+
+    if output.status.success() {
         if let Some(index_str) = stdout.split_whitespace().nth(1) {
             if let Ok(index) = usize::from_str(index_str) {
                 return Ok(index);
             }
         }
     }
+
     trace!("Failed to parse `base-index` from tmux output: {}", stdout);
 
     Ok(0) // Default value
