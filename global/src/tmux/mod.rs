@@ -196,6 +196,26 @@ fn determine_commands_for_window(
     }
 }
 
+fn compare_presumed_vs_actual_state(current_state: &mut TmuxState, options: &impl TmuxOptions) {
+    if options._is_testing() || tracing::level_enabled!(tracing::Level::TRACE) {
+        let actual_state = gather_tmux_state(options);
+
+        if *current_state != actual_state {
+            let message = format!(
+                "State difference - Current (presumed): {:#?}, Actual: {:#?}",
+                current_state, actual_state
+            );
+
+            trace!("{}", message);
+
+            if options._is_testing() {
+                // NOTE: make the tests fail if our expected internal representation doesn't match reality
+                panic!("{}", message);
+            }
+        }
+    }
+}
+
 fn ensure_window(
     session_name: &str,
     window: &Window,
@@ -207,13 +227,7 @@ fn ensure_window(
     let socket_name = get_socket_name(options);
     let mut commands_executed = vec![];
 
-    if tracing::level_enabled!(tracing::Level::TRACE) {
-        trace!(
-            "Current (presumed) state: {:#?}\nActual state: {:#?}",
-            current_state,
-            gather_tmux_state(options)
-        );
-    }
+    compare_presumed_vs_actual_state(current_state, options);
 
     if let Some(windows) = current_state.get_mut(session_name) {
         if windows.contains(&window.name) {
@@ -291,23 +305,7 @@ fn ensure_window(
         current_state.insert(session_name.to_string(), vec![window.name.to_string()]);
     }
 
-    if options._is_testing() || tracing::level_enabled!(tracing::Level::TRACE) {
-        let actual_state = gather_tmux_state(options);
-
-        if *current_state != actual_state {
-            let message = format!(
-                "State difference - Current (presumed): {:#?}, Actual: {:#?}",
-                current_state, actual_state
-            );
-
-            trace!("{}", message);
-
-            if options._is_testing() {
-                // NOTE: make the tests fail if our expected internal representation doesn't match reality
-                panic!("{}", message);
-            }
-        }
-    }
+    compare_presumed_vs_actual_state(current_state, options);
 
     Ok(commands_executed)
 }
