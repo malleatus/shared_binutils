@@ -85,12 +85,22 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
     let mut current_state = gather_tmux_state(options);
     let mut commands = vec![];
 
-    let base_index = determine_base_index()?;
-
     match &config.tmux {
         Some(tmux) => {
+            // when the tmux server is not started at all, we can't call determine_base_index yet
+            // this feels silly, there probably is a better way to do it
+            let mut base_index: Option<usize> = if current_state.is_empty() {
+                Some(determine_base_index()?)
+            } else {
+                None
+            };
+
             for session in &tmux.sessions {
                 for (index, window) in session.windows.iter().enumerate() {
+                    if base_index.is_none() {
+                        base_index = Some(determine_base_index()?);
+                    }
+
                     let commands_executed = ensure_window(
                         &session.name,
                         window,
@@ -221,7 +231,7 @@ fn compare_presumed_vs_actual_state(current_state: &mut TmuxState, options: &imp
 fn ensure_window(
     session_name: &str,
     window: &Window,
-    base_index: &usize,
+    base_index: &Option<usize>,
     window_index: &usize,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
@@ -245,12 +255,19 @@ fn ensure_window(
                 session_name
             );
 
+            let base_index = if let Some(index) = base_index {
+                index
+            } else {
+                &0
+            };
+            let target_index = base_index + window_index;
+
             let mut cmd = Command::new("tmux");
             cmd.arg("-L")
                 .arg(&socket_name)
                 .arg("new-window")
                 .arg("-t")
-                .arg(format!("{}:{}", session_name, window_index + base_index))
+                .arg(format!("{}:{}", session_name, target_index))
                 .arg("-n")
                 .arg(&window.name)
                 // insert *before* any existing window at the specified index
