@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::os::unix::process::CommandExt;
+use std::str::FromStr;
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 use tracing::{debug, trace};
 
@@ -45,14 +46,51 @@ fn get_socket_name(options: &impl TmuxOptions) -> String {
         .unwrap_or_else(|| "default".to_string())
 }
 
+/// Determines the base index for tmux from the current configuration.
+///
+/// This function runs the `tmux show-option -g base-index` command to retrieve
+/// the base index configuration. Both @hjdivad and @rwjblue have `set -g base-index 1`
+/// in `.tmux.conf`, but on CI there is no tmux config, so `base-index` would be 0 (so we need to
+/// detect in order for tests to pass).
+fn determine_base_index() -> Result<usize> {
+    let output = Command::new("tmux")
+        // NOTE: not using `-L <socket-name>` because base-index is a global option
+        .arg("show-option")
+        .arg("-g")
+        .arg("base-index")
+        .output()
+        .context("Failed to determine `base-index` for tmux")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() {
+        trace!(
+            "Retrieving `base-index` from `tmux show-option -g base-index` output: {}",
+            stdout
+        );
+
+        if let Some(index_str) = stdout.split_whitespace().nth(1) {
+            if let Ok(index) = usize::from_str(index_str) {
+                return Ok(index);
+            }
+        }
+    }
+    trace!("Failed to parse `base-index` from tmux output: {}", stdout);
+
+    Ok(0) // Default value
+}
+
 pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<String>> {
     let mut current_state = gather_tmux_state(options);
     let mut commands = vec![];
+
+    let base_index = determine_base_index()?;
 
     match &config.tmux {
         Some(tmux) => {
             for session in &tmux.sessions {
                 for (index, window) in session.windows.iter().enumerate() {
+                    let index = base_index + index;
+
                     let commands_executed =
                         ensure_window(&session.name, window, &index, &mut current_state, options)?;
 
@@ -665,9 +703,9 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
-            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n baz",
-            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n qux",
-            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n derp",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n baz",
+            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n qux",
+            "tmux -L [SOCKET_NAME] new-window -t foo:4 -n derp",
             "tmux attach",
         ]
         "###);
@@ -724,7 +762,7 @@ mod tests {
 
         assert_debug_snapshot!(commands, @r###"
         [
-            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n bar",
             "tmux attach",
         ]
         "###);
