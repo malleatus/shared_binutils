@@ -395,6 +395,7 @@ mod tests {
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
     use test_utils::{create_workspace_with_packages, FakeBin, FakePackage};
+    use tracing_subscriber::EnvFilter;
 
     use crate::build_utils::generate_symlinks;
 
@@ -498,6 +499,14 @@ mod tests {
             .unwrap_or(false)
     }
 
+    fn setup_tracing() {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off")),
+            )
+            .init();
+    }
+
     fn build_testing_options() -> TestingTmuxOptions {
         // Make tests stable regardless of if we are within a TMUX session or not
         unsafe { env::remove_var("TMUX") }
@@ -514,6 +523,8 @@ mod tests {
             !tmux_server_running(&options),
             "precond - tmux server should not be running on randomized socket name"
         );
+
+        setup_tracing();
 
         options
     }
