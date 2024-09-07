@@ -89,10 +89,14 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
         Some(tmux) => {
             for session in &tmux.sessions {
                 for (index, window) in session.windows.iter().enumerate() {
-                    let index = base_index + index;
-
-                    let commands_executed =
-                        ensure_window(&session.name, window, &index, &mut current_state, options)?;
+                    let commands_executed = ensure_window(
+                        &session.name,
+                        window,
+                        &base_index,
+                        &index,
+                        &mut current_state,
+                        options,
+                    )?;
 
                     for command in commands_executed {
                         commands.push(generate_debug_string_for_command(&command));
@@ -195,7 +199,8 @@ fn determine_commands_for_window(
 fn ensure_window(
     session_name: &str,
     window: &Window,
-    index: &usize,
+    base_index: &usize,
+    window_index: &usize,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
 ) -> Result<Vec<Command>> {
@@ -229,9 +234,11 @@ fn ensure_window(
                 .arg(&socket_name)
                 .arg("new-window")
                 .arg("-t")
-                .arg(format!("{}:{}", session_name, index))
+                .arg(format!("{}:{}", session_name, window_index + base_index))
                 .arg("-n")
-                .arg(&window.name);
+                .arg(&window.name)
+                // insert *before* any existing window at the specified index
+                .arg("-b");
 
             if let Some(path) = &window.path {
                 cmd.arg("-c").arg(path);
@@ -246,7 +253,7 @@ fn ensure_window(
             commands_executed.push(run_command(cmd, options)?);
             commands_executed.extend(execute_command(session_name, window, options)?);
 
-            windows.push(window.name.to_string());
+            windows.insert(*window_index, window.name.to_string());
         }
     } else {
         trace!(
@@ -727,9 +734,9 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
-            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n baz",
-            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n qux",
-            "tmux -L [SOCKET_NAME] new-window -t foo:4 -n derp",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n baz -b",
+            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n qux -b",
+            "tmux -L [SOCKET_NAME] new-window -t foo:4 -n derp -b",
             "tmux attach",
         ]
         "###);
@@ -786,7 +793,7 @@ mod tests {
 
         assert_debug_snapshot!(commands, @r###"
         [
-            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n bar -b",
             "tmux attach",
         ]
         "###);
@@ -841,7 +848,7 @@ mod tests {
 
         assert_debug_snapshot!(commands, @r###"
         [
-            "tmux -L [SOCKET_NAME] new-window -t foo:0 -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n bar -b",
             "tmux attach",
         ]
         "###);
