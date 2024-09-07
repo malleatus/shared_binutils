@@ -971,7 +971,9 @@ mod tests {
 
     #[test]
     fn test_attempts_to_attach_to_default_session() -> Result<()> {
-        env::remove_var("TMUX");
+        unsafe {
+            env::remove_var("TMUX");
+        }
 
         let options = build_testing_options();
 
@@ -1007,7 +1009,9 @@ mod tests {
 
     #[test]
     fn test_attempts_to_attach_without_default_session() -> Result<()> {
-        env::remove_var("TMUX");
+        unsafe {
+            env::remove_var("TMUX");
+        }
 
         let options = build_testing_options();
 
