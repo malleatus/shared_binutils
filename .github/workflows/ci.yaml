@@ -10,6 +10,9 @@ on:
 
 jobs:
   test:
+    env:
+      RUST_LOG: trace
+
     name: cargo test
     runs-on: ubuntu-latest
     steps:
