@@ -168,7 +168,7 @@ fn compare_presumed_vs_actual_state(current_state: &mut TmuxState, options: &imp
 
             if options._is_testing() {
                 // NOTE: make the tests fail if our expected internal representation doesn't match reality
-                // panic!("{}", message);
+                panic!("{}", message);
             }
         }
     }
