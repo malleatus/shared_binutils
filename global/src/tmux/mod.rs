@@ -90,9 +90,9 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
             // when the tmux server is not started at all, we can't call determine_base_index yet
             // this feels silly, there probably is a better way to do it
             let mut base_index: Option<usize> = if current_state.is_empty() {
-                Some(determine_base_index()?)
-            } else {
                 None
+            } else {
+                Some(determine_base_index()?)
             };
 
             for session in &tmux.sessions {
