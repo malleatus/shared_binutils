@@ -1,6 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::os::unix::process::CommandExt;
-use std::str::FromStr;
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 use tracing::{debug, trace};
 
@@ -46,69 +45,16 @@ fn get_socket_name(options: &impl TmuxOptions) -> String {
         .unwrap_or_else(|| "default".to_string())
 }
 
-/// Determines the base index for tmux from the current configuration.
-///
-/// This function runs the `tmux show-option -g base-index` command to retrieve
-/// the base index configuration. Both @hjdivad and @rwjblue have `set -g base-index 1`
-/// in `.tmux.conf`, but on CI there is no tmux config, so `base-index` would be 0 (so we need to
-/// detect in order for tests to pass).
-fn determine_base_index() -> Result<usize> {
-    let output = Command::new("tmux")
-        // NOTE: not using `-L <socket-name>` because base-index is a global option
-        .arg("show-option")
-        .arg("-g")
-        .arg("base-index")
-        .output()
-        .context("Failed to determine `base-index` for tmux")?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    trace!(
-        "Retrieving `base-index` from `tmux show-option -g base-index` output: {:?}",
-        output
-    );
-
-    if output.status.success() {
-        if let Some(index_str) = stdout.split_whitespace().nth(1) {
-            if let Ok(index) = usize::from_str(index_str) {
-                return Ok(index);
-            }
-        }
-    }
-
-    trace!("Failed to parse `base-index` from tmux output: {}", stdout);
-
-    Ok(0) // Default value
-}
-
 pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<String>> {
     let mut current_state = gather_tmux_state(options);
     let mut commands = vec![];
 
     match &config.tmux {
         Some(tmux) => {
-            // when the tmux server is not started at all, we can't call determine_base_index yet
-            // this feels silly, there probably is a better way to do it
-            let mut base_index: Option<usize> = if current_state.is_empty() {
-                None
-            } else {
-                Some(determine_base_index()?)
-            };
-
             for session in &tmux.sessions {
                 for (index, window) in session.windows.iter().enumerate() {
-                    if base_index.is_none() {
-                        base_index = Some(determine_base_index()?);
-                    }
-
-                    let commands_executed = ensure_window(
-                        &session.name,
-                        window,
-                        &base_index,
-                        &index,
-                        &mut current_state,
-                        options,
-                    )?;
+                    let commands_executed =
+                        ensure_window(&session.name, window, &index, &mut current_state, options)?;
 
                     for command in commands_executed {
                         commands.push(generate_debug_string_for_command(&command));
@@ -231,7 +177,6 @@ fn compare_presumed_vs_actual_state(current_state: &mut TmuxState, options: &imp
 fn ensure_window(
     session_name: &str,
     window: &Window,
-    base_index: &Option<usize>,
     window_index: &usize,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
@@ -255,11 +200,7 @@ fn ensure_window(
                 session_name
             );
 
-            let base_index = if let Some(index) = base_index {
-                index
-            } else {
-                &0
-            };
+            let base_index = 1;
             let target_index = base_index + window_index;
 
             let mut cmd = Command::new("tmux");
