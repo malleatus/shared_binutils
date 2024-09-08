@@ -10,6 +10,9 @@ on:
 
 jobs:
   test:
+    env:
+      RUST_LOG: trace
+
     name: cargo test
     runs-on: ubuntu-latest
     steps:
@@ -21,6 +24,11 @@ jobs:
           tool: cargo-nextest
 
       - run: sudo apt-get update && sudo apt-get install -y zsh
+
+      - name: Write basic .tmux.conf
+        run: echo 'set -g base-index 1' > ~/.tmux.conf
+
+      - run: tmux -V
 
       - run: cargo nextest run --workspace
 

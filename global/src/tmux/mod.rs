@@ -52,9 +52,9 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
     match &config.tmux {
         Some(tmux) => {
             for session in &tmux.sessions {
-                for window in &session.windows {
+                for (index, window) in session.windows.iter().enumerate() {
                     let commands_executed =
-                        ensure_window(&session.name, window, &mut current_state, options)?;
+                        ensure_window(&session.name, window, &index, &mut current_state, options)?;
 
                     for command in commands_executed {
                         commands.push(generate_debug_string_for_command(&command));
@@ -154,16 +154,37 @@ fn determine_commands_for_window(
     }
 }
 
+fn compare_presumed_vs_actual_state(current_state: &mut TmuxState, options: &impl TmuxOptions) {
+    if options._is_testing() || tracing::level_enabled!(tracing::Level::TRACE) {
+        let actual_state = gather_tmux_state(options);
+
+        if *current_state != actual_state {
+            let message = format!(
+                "State difference - Current (presumed): {:#?}, Actual: {:#?}",
+                current_state, actual_state
+            );
+
+            trace!("{}", message);
+
+            if options._is_testing() {
+                // NOTE: make the tests fail if our expected internal representation doesn't match reality
+                panic!("{}", message);
+            }
+        }
+    }
+}
+
 fn ensure_window(
     session_name: &str,
     window: &Window,
+    window_index: &usize,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
 ) -> Result<Vec<Command>> {
     let socket_name = get_socket_name(options);
     let mut commands_executed = vec![];
 
-    trace!("Current state: {:#?}", current_state);
+    compare_presumed_vs_actual_state(current_state, options);
 
     if let Some(windows) = current_state.get_mut(session_name) {
         if windows.contains(&window.name) {
@@ -179,14 +200,19 @@ fn ensure_window(
                 session_name
             );
 
+            let base_index = 1;
+            let target_index = base_index + window_index;
+
             let mut cmd = Command::new("tmux");
             cmd.arg("-L")
                 .arg(&socket_name)
                 .arg("new-window")
                 .arg("-t")
-                .arg(format!("{}:", session_name))
+                .arg(format!("{}:{}", session_name, target_index))
                 .arg("-n")
-                .arg(&window.name);
+                .arg(&window.name)
+                // insert *before* any existing window at the specified index
+                .arg("-b");
 
             if let Some(path) = &window.path {
                 cmd.arg("-c").arg(path);
@@ -201,7 +227,7 @@ fn ensure_window(
             commands_executed.push(run_command(cmd, options)?);
             commands_executed.extend(execute_command(session_name, window, options)?);
 
-            windows.push(window.name.to_string());
+            windows.insert(*window_index, window.name.to_string());
         }
     } else {
         trace!(
@@ -238,6 +264,8 @@ fn ensure_window(
 
         current_state.insert(session_name.to_string(), vec![window.name.to_string()]);
     }
+
+    compare_presumed_vs_actual_state(current_state, options);
 
     Ok(commands_executed)
 }
@@ -334,7 +362,22 @@ fn run_command(mut cmd: Command, opts: &impl TmuxOptions) -> Result<Command> {
     trace!("Running: {}", generate_debug_string_for_command(&cmd));
 
     if !opts.is_dry_run() {
-        cmd.output()?;
+        match cmd.output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    // TODO: should we bail always or only in testing?
+                    anyhow::bail!(
+                        "Command execution failed (exit code: {}): {:?}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to execute command: {}", e);
+                return Err(e.into());
+            }
+        }
     }
 
     Ok(cmd)
@@ -394,6 +437,7 @@ mod tests {
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
     use test_utils::{create_workspace_with_packages, FakeBin, FakePackage};
+    use tracing_subscriber::EnvFilter;
 
     use crate::build_utils::generate_symlinks;
 
@@ -497,6 +541,14 @@ mod tests {
             .unwrap_or(false)
     }
 
+    fn setup_tracing() {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off")),
+            )
+            .init();
+    }
+
     fn build_testing_options() -> TestingTmuxOptions {
         // Make tests stable regardless of if we are within a TMUX session or not
         unsafe { env::remove_var("TMUX") }
@@ -513,6 +565,8 @@ mod tests {
             !tmux_server_running(&options),
             "precond - tmux server should not be running on randomized socket name"
         );
+
+        setup_tracing();
 
         options
     }
@@ -653,9 +707,9 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n baz",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n qux",
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n derp",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n baz -b",
+            "tmux -L [SOCKET_NAME] new-window -t foo:3 -n qux -b",
+            "tmux -L [SOCKET_NAME] new-window -t foo:4 -n derp -b",
             "tmux attach",
         ]
         "###);
@@ -712,7 +766,7 @@ mod tests {
 
         assert_debug_snapshot!(commands, @r###"
         [
-            "tmux -L [SOCKET_NAME] new-window -t foo: -n bar",
+            "tmux -L [SOCKET_NAME] new-window -t foo:2 -n bar -b",
             "tmux attach",
         ]
         "###);
@@ -722,6 +776,61 @@ mod tests {
             "foo": [
                 "baz",
                 "bar",
+            ],
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_inserts_missing_windows_at_correct_index() -> Result<()> {
+        let options = build_testing_options();
+
+        create_tmux_session("foo", "baz", &options)?;
+
+        let config = Config {
+            crate_locations: None,
+            shell_caching: None,
+            tmux: Some(Tmux {
+                default_session: None,
+                sessions: vec![Session {
+                    name: "foo".to_string(),
+                    windows: vec![
+                        Window {
+                            name: "bar".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                        Window {
+                            name: "baz".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                    ],
+                }],
+            }),
+        };
+
+        let commands = startup_tmux(&config, &options)?;
+        let commands = sanitize_commands_executed(commands, &options, None);
+
+        assert_debug_snapshot!(commands, @r###"
+        [
+            "tmux -L [SOCKET_NAME] new-window -t foo:1 -n bar -b",
+            "tmux attach",
+        ]
+        "###);
+
+        assert_debug_snapshot!(gather_tmux_state(&options), @r###"
+        {
+            "foo": [
+                "bar",
+                "baz",
             ],
         }
         "###);
@@ -915,7 +1024,9 @@ mod tests {
 
     #[test]
     fn test_attempts_to_attach_to_default_session() -> Result<()> {
-        env::remove_var("TMUX");
+        unsafe {
+            env::remove_var("TMUX");
+        }
 
         let options = build_testing_options();
 
@@ -951,7 +1062,9 @@ mod tests {
 
     #[test]
     fn test_attempts_to_attach_without_default_session() -> Result<()> {
-        env::remove_var("TMUX");
+        unsafe {
+            env::remove_var("TMUX");
+        }
 
         let options = build_testing_options();
 
