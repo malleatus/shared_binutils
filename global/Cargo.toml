@@ -6,24 +6,24 @@ license = "MIT"
 authors = ["David J. Hamilton <david@hamilton.gg>"]
 
 [dependencies]
-anyhow = "1.0.79"
-clap = { version = "4.5.3", features = ["derive"] }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+walkdir = { workspace = true }
+config = { workspace = true }
+latest_bin = { workspace = true }
 cargo_metadata = "0.18.1"
 toml = "0.8.12"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-walkdir = "2.5.0"
-config = { path = "../config" }
-latest_bin = { path = "../latest_bin" }
 regex = "1.10.6"
 shellexpand = "3.1.0"
 ureq = "2.10.1"
 
 [dev-dependencies]
-insta = { version = "1.36.1", features = ["yaml", "toml"] }
-tempfile = "3.10.1"
-temp-env = "0.3.6"
-rand = "0.8.5"
-test_utils = { path = "../test_utils" }
-fixturify = { path = "../fixturify" }
-mockito = "1.5.0"
+insta = { workspace = true }
+tempfile = { workspace = true }
+temp-env = { workspace = true }
+rand = { workspace = true }
+mockito = { workspace = true }
+test_utils = { workspace = true }
+fixturify = { workspace = true }
