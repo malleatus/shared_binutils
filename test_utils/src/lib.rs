@@ -3,6 +3,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tracing_subscriber::EnvFilter;
 
 use tempfile::tempdir;
 
@@ -24,6 +25,8 @@ impl Drop for TestEnvironment {
 }
 
 pub fn setup_test_environment() -> TestEnvironment {
+    setup_tracing();
+
     let original_home = env::var("HOME").ok();
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let temp_home = temp_dir.into_path();
@@ -127,6 +130,15 @@ pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePa
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+pub fn setup_tracing() {
+    // TODO: figure out if there is already a formatter setup, and noop
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off")),
+        )
+        .init();
 }
 
 #[cfg(test)]

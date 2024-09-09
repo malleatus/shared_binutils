@@ -436,8 +436,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
-    use test_utils::{create_workspace_with_packages, FakeBin, FakePackage};
-    use tracing_subscriber::EnvFilter;
+    use test_utils::{create_workspace_with_packages, setup_tracing, FakeBin, FakePackage};
 
     use crate::build_utils::generate_symlinks;
 
@@ -539,14 +538,6 @@ mod tests {
             .status()
             .map(|status| status.success())
             .unwrap_or(false)
-    }
-
-    fn setup_tracing() {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off")),
-            )
-            .init();
     }
 
     fn build_testing_options() -> TestingTmuxOptions {

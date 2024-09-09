@@ -1,83 +1,85 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
+use handlebars::{handlebars_helper, Handlebars};
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, error, info, trace};
 use tracing_subscriber::EnvFilter;
 
-fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
+handlebars_helper!(inline_command: |cmd: str| {
+    trace!("Running command: {}", cmd);
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .output()
+        .map_err(|e| handlebars::RenderErrorReason::Other(format!("Failed to execute command: {}", e)))?;
+
+    if output.status.success() {
+        let output_str = String::from_utf8_lossy(&output.stdout).into_owned();
+
+        format!(
+            "# CMD: {}\n# OUTPUT START: {}\n{}\n# OUTPUT END: {}\n",
+            cmd,
+            cmd,
+            output_str,
+            cmd
+        )
+    } else {
+        error!(
+            "Failed to run command '{}':\n {}",
+            cmd,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        format!(
+            "# CMD: {}\n",
+            cmd,
+        )
+    }
+});
+
+handlebars_helper!(inline_remote_content: |url: str| {
+    trace!("Fetching URL: {}", url);
+    let response = ureq::get(url)
+        .call()
+        .map_err(|e| handlebars::RenderErrorReason::Other(format!("Failed to fetch URL: {}", e)))?;
+
+    if response.status() == 200 {
+        let fetched_contents = response.into_string()
+            .map_err(|e| handlebars::RenderErrorReason::Other(format!("Failed to read response content: {}", e)))?;
+
+        format!(
+            "# FETCH: {}\n# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}\n",
+            url,
+            url,
+            fetched_contents,
+            url
+        )
+    } else {
+        return Err(handlebars::RenderErrorReason::Other(format!(
+            "Failed to fetch URL '{}': {} (Status Code: {})",
+            url,
+            response.status_text(),
+            response.status()
+        )).into());
+    }
+});
+
+fn process_file<S: AsRef<Path>>(
+    handlebars: &Handlebars,
+    source_file: S,
+    dest_file: S,
+) -> Result<()> {
     let source_file = source_file.as_ref();
     let dest_file = dest_file.as_ref();
 
     debug!("Processing file: {}", source_file.display());
 
-    let file = File::open(source_file).context("Failed to open file for reading")?;
-    let reader = BufReader::new(file);
-
-    let mut new_content = Vec::new();
-
-    for line in reader.lines() {
-        let line = line.context("Failed to read line")?;
-
-        if let Some(command) = line.strip_prefix("# CMD:") {
-            let trimmed_command = command.trim();
-
-            new_content.push(format!("# CMD: {}", trimmed_command));
-
-            trace!("Running command: {}", trimmed_command);
-
-            let output = Command::new("sh")
-                .arg("-c")
-                .arg(trimmed_command)
-                .output()
-                .context("Failed to execute command")?;
-
-            if output.status.success() {
-                let output_str = String::from_utf8_lossy(&output.stdout);
-                new_content.push(format!(
-                    "# OUTPUT START: {}\n{}\n# OUTPUT END: {}",
-                    trimmed_command, output_str, trimmed_command
-                ));
-            } else {
-                error!(
-                    "Failed to run command '{}':\n {}",
-                    trimmed_command,
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            }
-        } else if let Some(url) = line.strip_prefix("# FETCH:") {
-            let trimmed_url = url.trim();
-
-            new_content.push(format!("# FETCH: {}", trimmed_url));
-
-            trace!("Fetching URL: {}", trimmed_url);
-
-            let response = ureq::get(trimmed_url)
-                .call()
-                .context(format!("Failed to fetch URL: {}", trimmed_url))?;
-
-            if response.status() == 200 {
-                let content = response
-                    .into_string()
-                    .context("Failed to read response content")?;
-                new_content.push(format!(
-                    "# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}",
-                    trimmed_url, content, trimmed_url
-                ));
-            } else {
-                anyhow::bail!(
-                    "Failed to fetch URL '{}': {} (Status Code: {})",
-                    trimmed_url,
-                    response.status_text(),
-                    response.status()
-                );
-            }
-        } else {
-            new_content.push(line);
-        }
-    }
+    let file_content = fs::read_to_string(source_file).context("Failed to read file content")?;
+    let new_content = handlebars
+        .render_template_with_context(&file_content, &handlebars::Context::null())
+        .map_err(|e| anyhow::anyhow!("Failed to render template: {}", e))?;
 
     if let Some(parent) = dest_file.parent() {
         fs::create_dir_all(parent)
@@ -85,21 +87,19 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
     }
 
     debug!("Writing to file: {}", dest_file.display());
-    trace!("New content:\n{}", new_content.join("\n"));
+    trace!("New content:\n{}", new_content);
 
     let mut output_file = File::create(dest_file)
         .with_context(|| format!("Failed to open file for writing: {}", dest_file.display()))?;
-
-    for line in new_content {
-        writeln!(output_file, "{}", line).context("Failed to write line")?;
-    }
-
+    output_file
+        .write_all(new_content.as_bytes())
+        .context("Failed to write content to file")?;
     output_file.flush().context("Failed to flush file")?;
 
     Ok(())
 }
 
-fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
+fn process_directory(handlebars: &Handlebars, source_dir: &Path, dest_dir: &Path) -> Result<()> {
     info!("Scanning directory: {}", source_dir.display());
 
     for entry in fs::read_dir(source_dir)
@@ -119,14 +119,14 @@ fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
             let new_dest_dir = dest_dir.join(relative_path);
 
             fs::create_dir_all(&new_dest_dir).context("Failed to create destination directory")?;
-            process_directory(&path, &new_dest_dir)
+            process_directory(handlebars, &path, &new_dest_dir)
                 .context(format!("Failed to process directory {:?}", path))?;
         } else {
             let relative_path = path
                 .strip_prefix(source_dir)
                 .context("Failed to get relative path")?;
             let dest_file = dest_dir.join(relative_path);
-            process_file(&path, &dest_file)
+            process_file(handlebars, &path, &dest_file)
                 .context(format!("Failed to process file {:?}", path))?;
         }
     }
@@ -200,7 +200,17 @@ fn run(args: Vec<String>) -> Result<()> {
         fs::remove_dir_all(dest_dir).context("Failed to clear destination directory")?;
     }
 
-    process_directory(source_dir, dest_dir).context("Failed to process directory")
+    let mut handlebars = Handlebars::new();
+    setup_handlebars(&mut handlebars);
+
+    process_directory(&handlebars, source_dir, dest_dir).context("Failed to process directory")
+}
+
+fn setup_handlebars(handlebars: &mut Handlebars) {
+    handlebars.register_escape_fn(handlebars::no_escape);
+
+    handlebars.register_helper("inline_command", Box::new(inline_command));
+    handlebars.register_helper("inline_remote_content", Box::new(inline_remote_content));
 }
 
 fn main() -> Result<()> {
@@ -224,53 +234,23 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs::write;
     use tempfile::tempdir;
-    use test_utils::setup_test_environment;
+    use test_utils::{setup_test_environment, setup_tracing};
 
     #[test]
     fn test_process_file_with_valid_command() -> Result<()> {
+        setup_tracing();
+
         let dir = tempdir()?;
         let source_file = dir.path().join("test.zsh");
         let dest_file = dir.path().join("output.zsh");
 
-        let content = "# CMD: echo 'hello world'\n";
+        let content = "{{inline_command \"echo 'hello world'\"}}\n";
         write(&source_file, content)?;
 
-        process_file(&source_file, &dest_file)?;
+        let mut handlebars = Handlebars::new();
+        setup_handlebars(&mut handlebars);
 
-        let source_contents = fs::read_to_string(&source_file)?;
-
-        assert_snapshot!(source_contents, @r###"
-        # CMD: echo 'hello world'
-        "###);
-
-        let processed_content = fs::read_to_string(&dest_file)?;
-        assert_snapshot!(processed_content, @r###"
-        # CMD: echo 'hello world'
-        # OUTPUT START: echo 'hello world'
-        hello world
-
-        # OUTPUT END: echo 'hello world'
-        "###);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_process_file_with_existing_output() -> Result<()> {
-        let dir = tempdir()?;
-        let source_file = dir.path().join("test.zsh");
-        let dest_file = dir.path().join("output.zsh");
-
-        write(&source_file, "# CMD: echo 'hello world'\n")?;
-        write(&dest_file, "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nold output\n# OUTPUT END: echo 'hello world'\n")?;
-
-        process_file(&source_file, &dest_file)?;
-
-        let source_contents = fs::read_to_string(&source_file)?;
-
-        assert_snapshot!(source_contents, @r###"
-        # CMD: echo 'hello world'
-        "###);
+        process_file(&handlebars, &source_file, &dest_file)?;
 
         let processed_content = fs::read_to_string(&dest_file)?;
         assert_snapshot!(processed_content, @r###"
@@ -286,21 +266,20 @@ mod tests {
 
     #[test]
     fn test_process_file_with_invalid_command() -> Result<()> {
+        setup_tracing();
+
         let dir = tempdir()?;
         let source_file = dir.path().join("test.zsh");
         let dest_file = dir.path().join("output.zsh");
 
-        let content = "# CMD: invalidcommand\n";
+        let content = "{{inline_command \"invalidcommand\"}}\n";
         write(&source_file, content)?;
 
+        let mut handlebars = Handlebars::new();
+        setup_handlebars(&mut handlebars);
+
         // Process the file (should not panic, just print error)
-        process_file(&source_file, &dest_file)?;
-
-        let source_contents = fs::read_to_string(&source_file)?;
-
-        assert_snapshot!(source_contents, @r###"
-        # CMD: invalidcommand
-        "###);
+        process_file(&handlebars, &source_file, &dest_file)?;
 
         let processed_content = fs::read_to_string(&dest_file)?;
 
@@ -313,17 +292,19 @@ mod tests {
 
     #[test]
     fn test_process_directory() {
+        setup_tracing();
+
         let temp_dir = tempdir().unwrap();
         let base_dir = temp_dir.path();
 
         let source_files: BTreeMap<String, String> = BTreeMap::from([
             (
                 "zsh/zshrc".to_string(),
-                "# CMD: echo 'hello world'\n".to_string(),
+                "{{inline_command \"echo 'hello world'\"}}\n".to_string(),
             ),
             (
                 "zsh/plugins/thing.zsh".to_string(),
-                "# CMD: echo 'goodbye world'\n".to_string(),
+                "{{inline_command \"echo 'goodbye world'\"}}\n".to_string(),
             ),
         ]);
 
@@ -332,16 +313,19 @@ mod tests {
         let source_dir = base_dir.join("zsh");
         let dest_dir = base_dir.join("zsh/dist");
 
-        process_directory(&source_dir, &dest_dir).unwrap();
+        let mut handlebars = Handlebars::new();
+        setup_handlebars(&mut handlebars);
+
+        process_directory(&handlebars, &source_dir, &dest_dir).unwrap();
 
         let file_map = fixturify::read(base_dir).unwrap();
 
         assert_debug_snapshot!(file_map, @r###"
         {
-            "zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n",
-            "zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n",
-            "zsh/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n",
-            "zsh/zshrc": "# CMD: echo 'hello world'\n",
+            "zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n\n",
+            "zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n\n",
+            "zsh/plugins/thing.zsh": "{{inline_command \"echo 'goodbye world'\"}}\n",
+            "zsh/zshrc": "{{inline_command \"echo 'hello world'\"}}\n",
         }
         "###)
     }
@@ -353,11 +337,11 @@ mod tests {
         let source_files: BTreeMap<String, String> = BTreeMap::from([
             (
                 "src/rwjblue/dotfiles/zsh/zshrc".to_string(),
-                "# CMD: echo 'hello world'\n".to_string(),
+                "{{inline_command \"echo 'hello world'\"}}\n".to_string(),
             ),
             (
                 "src/rwjblue/dotfiles/zsh/plugins/thing.zsh".to_string(),
-                "# CMD: echo 'goodbye world'\n".to_string(),
+                "{{inline_command \"echo 'goodbye world'\"}}\n".to_string(),
             ),
             (
                 "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh".to_string(),
@@ -378,10 +362,10 @@ mod tests {
 
         assert_debug_snapshot!(file_map, @r###"
         {
-            "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n",
-            "src/rwjblue/dotfiles/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n",
-            "src/rwjblue/dotfiles/zsh/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n",
-            "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
+            "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n\n",
+            "src/rwjblue/dotfiles/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n\n",
+            "src/rwjblue/dotfiles/zsh/plugins/thing.zsh": "{{inline_command \"echo 'goodbye world'\"}}\n",
+            "src/rwjblue/dotfiles/zsh/zshrc": "{{inline_command \"echo 'hello world'\"}}\n",
         }
         "###)
     }
@@ -400,11 +384,11 @@ mod tests {
         let source_files: BTreeMap<String, String> = BTreeMap::from([
             (
                 "other-path/zsh/zshrc".to_string(),
-                "# CMD: echo 'hello world'\n".to_string(),
+                "{{inline_command \"echo 'hello world'\"}}\n".to_string(),
             ),
             (
                 "other-path/zsh/plugins/thing.zsh".to_string(),
-                "# CMD: echo 'goodbye world'\n".to_string(),
+                "{{inline_command \"echo 'goodbye world'\"}}\n".to_string(),
             ),
             (
                 "other-path/zsh/dist/plugins/thing.zsh".to_string(),
@@ -421,10 +405,10 @@ mod tests {
         assert_debug_snapshot!(file_map, @r###"
         {
             ".config/binutils/config.lua": "return { shell_caching = { source = \"~/other-path/zsh\", destination = \"~/other-path/zsh/dist\" } }",
-            "other-path/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n",
-            "other-path/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n",
-            "other-path/zsh/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n",
-            "other-path/zsh/zshrc": "# CMD: echo 'hello world'\n",
+            "other-path/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n\n",
+            "other-path/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n\n",
+            "other-path/zsh/plugins/thing.zsh": "{{inline_command \"echo 'goodbye world'\"}}\n",
+            "other-path/zsh/zshrc": "{{inline_command \"echo 'hello world'\"}}\n",
         }
         "###)
     }
@@ -436,11 +420,11 @@ mod tests {
         let source_files: BTreeMap<String, String> = BTreeMap::from([
             (
                 "src/rwjblue/dotfiles/zsh/zshrc".to_string(),
-                "# CMD: echo 'hello world'\n".to_string(),
+                "{{inline_command \"echo 'hello world'\"}}\n".to_string(),
             ),
             (
                 "src/rwjblue/dotfiles/zsh/plugins/thing.zsh".to_string(),
-                "# CMD: echo 'goodbye world'\n".to_string(),
+                "{{inline_command \"echo 'goodbye world'\"}}\n".to_string(),
             ),
             (
                 "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh".to_string(),
@@ -466,17 +450,19 @@ mod tests {
 
         assert_debug_snapshot!(file_map, @r###"
         {
-            "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n",
+            "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n# OUTPUT START: echo 'goodbye world'\ngoodbye world\n\n# OUTPUT END: echo 'goodbye world'\n\n",
             "src/rwjblue/dotfiles/zsh/dist/plugins/weird-other-thing.zsh": "# HAHAHA WTF IS THIS?!?! DO NOT WORRY ABOUT",
-            "src/rwjblue/dotfiles/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n",
-            "src/rwjblue/dotfiles/zsh/plugins/thing.zsh": "# CMD: echo 'goodbye world'\n",
-            "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
+            "src/rwjblue/dotfiles/zsh/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n\n",
+            "src/rwjblue/dotfiles/zsh/plugins/thing.zsh": "{{inline_command \"echo 'goodbye world'\"}}\n",
+            "src/rwjblue/dotfiles/zsh/zshrc": "{{inline_command \"echo 'hello world'\"}}\n",
         }
         "###)
     }
 
     #[test]
     fn test_process_file_with_fetch() -> Result<()> {
+        setup_tracing();
+
         let mut server = mockito::Server::new();
 
         let server_url = server.url();
@@ -492,21 +478,19 @@ mod tests {
         let source_file = dir.path().join("test.zsh");
         let dest_file = dir.path().join("output.zsh");
 
-        let content = format!("# FETCH: {}/test", server_url);
+        let content = format!("{{{{inline_remote_content \"{}/test\"}}}}\n", server_url);
         write(&source_file, content)?;
 
-        process_file(&source_file, &dest_file)?;
+        let mut handlebars = Handlebars::new();
+        setup_handlebars(&mut handlebars);
+
+        process_file(&handlebars, &source_file, &dest_file)?;
 
         mock.assert();
 
         let replace_server_addr = |content: &str, server_url: &str| -> String {
             content.replace(server_url, "{server_url}")
         };
-
-        let source_contents = fs::read_to_string(&source_file)?;
-        assert_snapshot!(replace_server_addr(&source_contents, &server_url), @r###"
-        # FETCH: {server_url}/test
-        "###);
 
         let processed_content = fs::read_to_string(&dest_file)?;
         assert_snapshot!(replace_server_addr(&processed_content, &server_url), @r###"
