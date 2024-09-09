@@ -6,10 +6,10 @@ license = "MIT"
 authors = ["Robert Jackson <me@rwjblue.com>"]
 
 [dependencies]
-anyhow = "1.0"
-walkdir = "2.5.0"
-ignore = "0.4.18"
+anyhow = { workspace = true }
+walkdir = { workspace = true }
+ignore = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.36.1", features = ["yaml", "toml"] }
-tempfile = "3.10.1"
+insta = { workspace = true, features = ["yaml", "toml"] }
+tempfile = { workspace = true }

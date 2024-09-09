@@ -13,11 +13,11 @@ tracing-subscriber = { workspace = true }
 walkdir = { workspace = true }
 config = { workspace = true }
 latest_bin = { workspace = true }
-cargo_metadata = "0.18.1"
-toml = "0.8.12"
-regex = "1.10.6"
-shellexpand = "3.1.0"
-ureq = "2.10.1"
+cargo_metadata = { workspace = true }
+toml = { workspace = true }
+regex = { workspace = true }
+shellexpand = { workspace = true }
+ureq = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

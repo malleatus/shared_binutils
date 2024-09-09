@@ -31,3 +31,14 @@ config = { path = "config" }
 latest_bin = { path = "latest_bin" }
 test_utils = { path = "test_utils" }
 fixturify = { path = "fixturify" }
+cargo_metadata = "0.18.1"
+ignore = "0.4.18"
+mlua = "0.9.7"
+regex = "1.10.6"
+schemars = "0.8.21"
+serde = "1.0.197"
+serde_json = "1.0.122"
+shellexpand = "3.1.0"
+syn = "2.0"
+toml = "0.8.12"
+ureq = "2.10.1"
