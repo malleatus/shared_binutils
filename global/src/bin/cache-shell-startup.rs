@@ -47,6 +47,33 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                     String::from_utf8_lossy(&output.stderr)
                 );
             }
+        } else if let Some(url) = line.strip_prefix("# FETCH:") {
+            let trimmed_url = url.trim();
+
+            new_content.push(format!("# FETCH: {}", trimmed_url));
+
+            trace!("Fetching URL: {}", trimmed_url);
+
+            let response = ureq::get(trimmed_url)
+                .call()
+                .context(format!("Failed to fetch URL: {}", trimmed_url))?;
+
+            if response.status() == 200 {
+                let content = response
+                    .into_string()
+                    .context("Failed to read response content")?;
+                new_content.push(format!(
+                    "# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}",
+                    trimmed_url, content, trimmed_url
+                ));
+            } else {
+                anyhow::bail!(
+                    "Failed to fetch URL '{}': {} (Status Code: {})",
+                    trimmed_url,
+                    response.status_text(),
+                    response.status()
+                );
+            }
         } else {
             new_content.push(line);
         }
@@ -446,6 +473,50 @@ mod tests {
             "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
         }
         "###)
+    }
+
+    #[test]
+    fn test_process_file_with_fetch() -> Result<()> {
+        let mut server = mockito::Server::new();
+
+        let server_url = server.url();
+
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(200)
+            .with_header("content-type", "text/plain")
+            .with_body("# some content returned here!!")
+            .create();
+
+        let dir = tempdir()?;
+        let source_file = dir.path().join("test.zsh");
+        let dest_file = dir.path().join("output.zsh");
+
+        let content = format!("# FETCH: {}/test", server_url);
+        write(&source_file, content)?;
+
+        process_file(&source_file, &dest_file)?;
+
+        mock.assert();
+
+        let replace_server_addr = |content: &str, server_url: &str| -> String {
+            content.replace(server_url, "{server_url}")
+        };
+
+        let source_contents = fs::read_to_string(&source_file)?;
+        assert_snapshot!(replace_server_addr(&source_contents, &server_url), @r###"
+        # FETCH: {server_url}/test
+        "###);
+
+        let processed_content = fs::read_to_string(&dest_file)?;
+        assert_snapshot!(replace_server_addr(&processed_content, &server_url), @r###"
+        # FETCH: {server_url}/test
+        # FETCHED CONTENT START: {server_url}/test
+        # some content returned here!!
+        # FETCHED CONTENT END: {server_url}/test
+        "###);
+
+        Ok(())
     }
 }
 
