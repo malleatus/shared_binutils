@@ -17,6 +17,7 @@ config = { path = "../config" }
 latest_bin = { path = "../latest_bin" }
 regex = "1.10.6"
 shellexpand = "3.1.0"
+ureq = "2.10.1"
 
 [dev-dependencies]
 insta = { version = "1.36.1", features = ["yaml", "toml"] }
@@ -25,3 +26,4 @@ temp-env = "0.3.6"
 rand = "0.8.5"
 test_utils = { path = "../test_utils" }
 fixturify = { path = "../fixturify" }
+mockito = "1.5.0"
