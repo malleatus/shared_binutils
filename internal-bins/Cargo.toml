@@ -5,14 +5,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true }
 latest_bin = { path = "../latest_bin" }
 schemars = { workspace = true }
 serde_json = { workspace = true }
-syn = { workspace = true, features = ["full"] }
+syn = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 config = { path = "../config" }
 
 [dev-dependencies]

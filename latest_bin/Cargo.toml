@@ -8,11 +8,11 @@ authors = ["Robert Jackson <me@rwjblue.com>"]
 [dependencies]
 anyhow = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 walkdir = { workspace = true }
 
 [dev-dependencies]
-insta = { workspace = true, features = ["yaml", "toml"] }
+insta = { workspace = true }
 tempfile = { workspace = true }
 temp-env = { workspace = true }
 rand = { workspace = true }

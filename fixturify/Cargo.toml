@@ -11,5 +11,5 @@ walkdir = { workspace = true }
 ignore = { workspace = true }
 
 [dev-dependencies]
-insta = { workspace = true, features = ["yaml", "toml"] }
+insta = { workspace = true }
 tempfile = { workspace = true }

@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true }
 latest_bin = { path = "../latest_bin" }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-mlua = { workspace = true, features = ["lua54", "vendored", "serialize"] }
+tracing-subscriber = { workspace = true }
+mlua = { workspace = true }
 
 [dev-dependencies]
 regex = { workspace = true }
