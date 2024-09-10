@@ -10,6 +10,19 @@ members = [
   "shell",
 ]
 
+[workspace.package]
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+version = "0.1.0"
+authors = [
+  "Robert Jackson <me@rwjblue.com>",
+  "David J. Hamilton <david@hamilton.gg>",
+]
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
+
 [profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3

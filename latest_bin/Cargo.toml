@@ -1,9 +1,13 @@
 [package]
 name = "latest_bin"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-authors = ["Robert Jackson <me@rwjblue.com>"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
