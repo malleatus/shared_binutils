@@ -1,15 +1,19 @@
 [package]
 name = "shell"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-authors = ["David J. Hamilton <david@hamilton.gg>"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
-anyhow = "1.0.79"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.36.1" }
-tempfile = "3.10.1"
+insta = { workspace = true }
+tempfile = { workspace = true }

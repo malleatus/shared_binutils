@@ -1,7 +1,57 @@
 [workspace]
 resolver = "2"
-members = ["config", "fixturify", "internal-bins", "latest_bin", "test_utils", "global", "shell"]
+members = [
+  "config",
+  "fixturify",
+  "internal-bins",
+  "latest_bin",
+  "test_utils",
+  "global",
+  "shell",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+version = "0.1.0"
+authors = [
+  "Robert Jackson <me@rwjblue.com>",
+  "David J. Hamilton <david@hamilton.gg>",
+]
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
 
 [profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3
+
+[workspace.dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.5.3", features = ["derive"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+walkdir = "2.5.0"
+
+insta = { version = "1.36.1", features = ["yaml", "toml"] }
+tempfile = "3.10.1"
+temp-env = "0.3.6"
+rand = "0.8.5"
+mockito = "1.5.0"
+
+config = { path = "config" }
+latest_bin = { path = "latest_bin" }
+test_utils = { path = "test_utils" }
+fixturify = { path = "fixturify" }
+cargo_metadata = "0.18.1"
+ignore = "0.4.18"
+mlua = { version = "0.9.7", features = ["lua54", "vendored", "serialize"] }
+regex = "1.10.6"
+schemars = "0.8.21"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.122"
+shellexpand = "3.1.0"
+syn = { version = "2.0", features = ["full"] }
+toml = "0.8.12"
+ureq = "2.10.1"
