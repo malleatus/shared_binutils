@@ -4,7 +4,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 
 fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
@@ -41,11 +41,13 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                     trimmed_command, output_str, trimmed_command
                 ));
             } else {
-                error!(
-                    "Failed to run command '{}':\n {}",
+                let error_message = format!(
+                    "Failed to run command (`{}`):\n {}",
                     trimmed_command,
                     String::from_utf8_lossy(&output.stderr)
                 );
+
+                anyhow::bail!("{}", error_message);
             }
         } else if let Some(url) = line.strip_prefix("# FETCH:") {
             let trimmed_url = url.trim();
@@ -67,11 +69,15 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                     trimmed_url, content, trimmed_url
                 ));
             } else {
+                let status = response.status();
+                let error_body = response
+                    .into_string()
+                    .unwrap_or_else(|_| "Failed to read error response body".to_string());
                 anyhow::bail!(
-                    "Failed to fetch URL '{}': {} (Status Code: {})",
+                    "Failed to fetch URL '{}' (Status Code: {}):\nError Body: {}",
                     trimmed_url,
-                    response.status_text(),
-                    response.status()
+                    status,
+                    error_body
                 );
             }
         } else {
@@ -294,19 +300,10 @@ mod tests {
         write(&source_file, content)?;
 
         // Process the file (should not panic, just print error)
-        process_file(&source_file, &dest_file)?;
+        let result = process_file(&source_file, &dest_file);
 
-        let source_contents = fs::read_to_string(&source_file)?;
-
-        assert_snapshot!(source_contents, @r###"
-        # CMD: invalidcommand
-        "###);
-
-        let processed_content = fs::read_to_string(&dest_file)?;
-
-        assert_snapshot!(processed_content, @r###"
-        # CMD: invalidcommand
-        "###);
+        let err = result.unwrap_err();
+        assert_debug_snapshot!(err, @r###""Failed to run command (`invalidcommand`):\n sh: invalidcommand: command not found\n""###);
 
         Ok(())
     }
@@ -515,6 +512,45 @@ mod tests {
         # some content returned here!!
         # FETCHED CONTENT END: {server_url}/test
         "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_file_with_invalid_fetch() -> Result<()> {
+        let mut server = mockito::Server::new();
+
+        let server_url = server.url();
+
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(500)
+            .with_header("content-type", "text/plain")
+            .with_body("ZOMG ERROR")
+            .create();
+
+        let dir = tempdir()?;
+        let source_file = dir.path().join("test.zsh");
+        let dest_file = dir.path().join("output.zsh");
+
+        let content = format!("# FETCH: {}/test", server_url);
+        write(&source_file, content)?;
+
+        let replace_server_addr = |content: String, server_url: &str| -> String {
+            content.replace(server_url, "{server_url}")
+        };
+
+        let result = process_file(&source_file, &dest_file);
+
+        let err = result.unwrap_err();
+        assert_snapshot!(replace_server_addr(format!("{:?}", err), &server_url), @r###"
+        Failed to fetch URL: {server_url}/test
+
+        Caused by:
+            {server_url}/test: status code 500
+        "###);
+
+        mock.assert();
 
         Ok(())
     }
