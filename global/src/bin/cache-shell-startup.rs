@@ -384,6 +384,56 @@ mod tests {
     }
 
     #[test]
+    fn test_run_with_command_failures() {
+        let env = setup_test_environment();
+
+        let source_files: BTreeMap<String, String> = BTreeMap::from([
+            (
+                "src/rwjblue/dotfiles/zsh/zshrc".to_string(),
+                "# CMD: zomg-wtf-bbq\n".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/plugins/thing.zsh".to_string(),
+                "# CMD: echo 'goodbye world'\n".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/dist/zshrc".to_string(),
+                "# original contents; before running caching".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh".to_string(),
+                "# original contents; before running caching".to_string(),
+            ),
+        ]);
+
+        fixturify::write(&env.home, &source_files).unwrap();
+
+        let result = run(vec![
+            "cache-shell-setup".to_string(),
+            "--source=~/src/rwjblue/dotfiles/zsh".to_string(),
+            "--destination=~/src/rwjblue/dotfiles/zsh/dist".to_string(),
+        ]);
+
+        let err = result.unwrap_err();
+        let replace_home_dir = |content: String| -> String {
+            content.replace(&env.home.to_string_lossy().to_string(), "~")
+        };
+        assert_snapshot!(replace_home_dir(format!("{:?}", err)), @r###"
+        Failed to process directory
+
+        Caused by:
+            0: Failed to process file "~/src/rwjblue/dotfiles/zsh/zshrc"
+            1: Failed to run command (`zomg-wtf-bbq`):
+                sh: zomg-wtf-bbq: command not found
+               
+        "###);
+
+        let file_map = fixturify::read(&env.home).unwrap();
+
+        assert_debug_snapshot!(file_map, @r###""###)
+    }
+
+    #[test]
     fn test_run_with_config() {
         let env = setup_test_environment();
 
