@@ -303,11 +303,20 @@ mod tests {
         let result = process_file(&source_file, &dest_file);
 
         let err = result.unwrap_err();
-        let error_debug_output = format!("{:?}", err);
-        assert_snapshot!(error_debug_output, @r###"
-        Failed to run command (`invalidcommand`):
-         sh: invalidcommand: command not found
-        "###);
+
+        let error_alternate_output = format!("{:#}", err);
+
+        // the alternate output is not stable between local and CI, so we can't use snapshots here
+        assert!(
+            error_alternate_output.contains("Failed to run command (`invalidcommand`)"),
+            "Error output: {}",
+            error_alternate_output
+        );
+        assert!(
+            error_alternate_output.contains("not found"),
+            "Error output: {}",
+            error_alternate_output
+        );
 
         Ok(())
     }
@@ -422,19 +431,29 @@ mod tests {
         let replace_home_dir = |content: String| -> String {
             content.replace(&env.home.to_string_lossy().to_string(), "~")
         };
-        assert_snapshot!(replace_home_dir(format!("{:?}", err)), @r###"
-        Failed to process directory
+        let err_output = replace_home_dir(format!("{:?}", err));
+        #[cfg(target_os = "macos")]
+        {
+            assert_snapshot!(err_output, @r###"
+            Failed to process directory
 
-        Caused by:
-            0: Failed to process file "~/src/rwjblue/dotfiles/zsh/zshrc"
-            1: Failed to run command (`zomg-wtf-bbq`):
-                sh: zomg-wtf-bbq: command not found
-               
-        "###);
+            Caused by:
+                0: Failed to process file "~/src/rwjblue/dotfiles/zsh/zshrc"
+                1: Failed to run command (`zomg-wtf-bbq`):
+                    sh: zomg-wtf-bbq: command not found
+
+            "###);
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(err_output.contains("zomg-wtf-bbq"));
+            assert!(err_output.contains("not found"));
+        }
 
         let file_map = fixturify::read(&env.home).unwrap();
 
-        assert_debug_snapshot!(file_map, @r###""###)
+        assert_eq!(file_map, source_files);
     }
 
     #[test]
@@ -597,12 +616,7 @@ mod tests {
         let result = process_file(&source_file, &dest_file);
 
         let err = result.unwrap_err();
-        assert_snapshot!(replace_server_addr(format!("{:?}", err), &server_url), @r###"
-        Failed to fetch URL: {server_url}/test
-
-        Caused by:
-            {server_url}/test: status code 500
-        "###);
+        assert_snapshot!(replace_server_addr(format!("{:#}", err), &server_url), @"Failed to fetch URL: {server_url}/test: {server_url}/test: status code 500");
 
         mock.assert();
 
