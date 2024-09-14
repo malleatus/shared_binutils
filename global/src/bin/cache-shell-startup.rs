@@ -32,7 +32,7 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                 .arg("-c")
                 .arg(trimmed_command)
                 .output()
-                .context("Failed to execute command")?;
+                .context(format!("Failed to execute command (`{}`)", trimmed_command))?;
 
             if output.status.success() {
                 let output_str = String::from_utf8_lossy(&output.stdout);
@@ -303,7 +303,11 @@ mod tests {
         let result = process_file(&source_file, &dest_file);
 
         let err = result.unwrap_err();
-        assert_debug_snapshot!(err, @r###""Failed to run command (`invalidcommand`):\n sh: invalidcommand: command not found\n""###);
+        let error_debug_output = format!("{:?}", err);
+        assert_snapshot!(error_debug_output, @r###"
+        Failed to run command (`invalidcommand`):
+         sh: invalidcommand: command not found
+        "###);
 
         Ok(())
     }
