@@ -60,6 +60,34 @@ macro_rules! sh {
     }};
 }
 
+#[macro_export]
+///Run the shell command `$cmd` using zsh.
+///Return Ok(success), i.e. true if the command exists 0 and 1 if the command exists non-zero.
+///
+///Returns an error if the command failed to run.
+macro_rules! sh_q {
+    ($cmd:expr) => {{
+        use anyhow::Context;
+
+        CMD_DIR.with(|cmd_dir| {
+            use std::process::Command;
+
+            let mut command = Command::new("zsh");
+            command.args(vec!["-c", $cmd]);
+
+            if let Some(cwd) = cmd_dir.borrow().as_ref() {
+                command.current_dir(cwd);
+            }
+
+            let output = command
+                .output()
+                .context(format!("Running command: {:?}", command))?;
+
+            Ok::<bool, anyhow::Error>(output.status.success())
+        })
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
