@@ -49,6 +49,28 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
 
                 anyhow::bail!("{}", error_message);
             }
+        } else if let Some(command) = line.strip_prefix("# CMD_SILENT:") {
+            let trimmed_command = command.trim();
+
+            trace!("Running command: {}", trimmed_command);
+
+            let output = Command::new("sh")
+                .arg("-c")
+                .arg(trimmed_command)
+                .output()
+                .context(format!("Failed to execute command (`{}`)", trimmed_command))?;
+
+            if output.status.success() {
+                new_content.push(String::from_utf8_lossy(&output.stdout).to_string());
+            } else {
+                let error_message = format!(
+                    "Failed to run command (`{}`):\n {}",
+                    trimmed_command,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+
+                anyhow::bail!("{}", error_message);
+            }
         } else if let Some(url) = line.strip_prefix("# FETCH:") {
             let trimmed_url = url.trim();
 
@@ -281,6 +303,32 @@ mod tests {
         hello world
 
         # OUTPUT END: echo 'hello world'
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_file_with_silent_command() -> Result<()> {
+        let dir = tempdir()?;
+        let source_file = dir.path().join("test.zsh");
+        let dest_file = dir.path().join("output.zsh");
+
+        let content = "# CMD_SILENT: echo 'hello world'\n";
+        write(&source_file, content)?;
+
+        process_file(&source_file, &dest_file)?;
+
+        let source_contents = fs::read_to_string(&source_file)?;
+
+        assert_snapshot!(source_contents, @r###"
+        # CMD_SILENT: echo 'hello world'
+        "###);
+
+        let processed_content = fs::read_to_string(&dest_file)?;
+        assert_snapshot!(processed_content, @r###"
+        hello world
+
         "###);
 
         Ok(())
