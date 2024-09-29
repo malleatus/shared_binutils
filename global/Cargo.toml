@@ -31,3 +31,4 @@ rand = { workspace = true }
 mockito = { workspace = true }
 test_utils = { workspace = true }
 fixturify = { workspace = true }
+pretty_assertions = { workspace = true }

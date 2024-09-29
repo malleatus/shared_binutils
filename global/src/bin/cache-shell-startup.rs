@@ -227,6 +227,7 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     use insta::{assert_debug_snapshot, assert_snapshot};
+    use pretty_assertions::assert_eq;
     use std::collections::BTreeMap;
     use std::fs::write;
     use tempfile::tempdir;

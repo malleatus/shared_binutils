@@ -39,6 +39,7 @@ tempfile = "3.10.1"
 temp-env = "0.3.6"
 rand = "0.8.5"
 mockito = "1.5.0"
+pretty_assertions = "1.4.1"
 
 config = { path = "config" }
 latest_bin = { path = "latest_bin" }
