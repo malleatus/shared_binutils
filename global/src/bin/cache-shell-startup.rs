@@ -4,7 +4,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 
 fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
@@ -32,7 +32,7 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                 .arg("-c")
                 .arg(trimmed_command)
                 .output()
-                .context("Failed to execute command")?;
+                .context(format!("Failed to execute command (`{}`)", trimmed_command))?;
 
             if output.status.success() {
                 let output_str = String::from_utf8_lossy(&output.stdout);
@@ -41,11 +41,13 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                     trimmed_command, output_str, trimmed_command
                 ));
             } else {
-                error!(
-                    "Failed to run command '{}':\n {}",
+                let error_message = format!(
+                    "Failed to run command (`{}`):\n {}",
                     trimmed_command,
                     String::from_utf8_lossy(&output.stderr)
                 );
+
+                anyhow::bail!("{}", error_message);
             }
         } else if let Some(url) = line.strip_prefix("# FETCH:") {
             let trimmed_url = url.trim();
@@ -67,11 +69,15 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
                     trimmed_url, content, trimmed_url
                 ));
             } else {
+                let status = response.status();
+                let error_body = response
+                    .into_string()
+                    .unwrap_or_else(|_| "Failed to read error response body".to_string());
                 anyhow::bail!(
-                    "Failed to fetch URL '{}': {} (Status Code: {})",
+                    "Failed to fetch URL '{}' (Status Code: {}):\nError Body: {}",
                     trimmed_url,
-                    response.status_text(),
-                    response.status()
+                    status,
+                    error_body
                 );
             }
         } else {
@@ -99,7 +105,7 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
     Ok(())
 }
 
-fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
+fn process_directory(source_dir: &Path, dest_dir: &Path, final_dest_dir: &Path) -> Result<()> {
     info!("Scanning directory: {}", source_dir.display());
 
     for entry in fs::read_dir(source_dir)
@@ -108,7 +114,7 @@ fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
         let entry = entry.context("Failed to process directory entry")?;
         let path = entry.path();
 
-        if path.starts_with(dest_dir) {
+        if path.starts_with(final_dest_dir) {
             continue;
         }
 
@@ -119,7 +125,7 @@ fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
             let new_dest_dir = dest_dir.join(relative_path);
 
             fs::create_dir_all(&new_dest_dir).context("Failed to create destination directory")?;
-            process_directory(&path, &new_dest_dir)
+            process_directory(&path, &new_dest_dir, final_dest_dir)
                 .context(format!("Failed to process directory {:?}", path))?;
         } else {
             let relative_path = path
@@ -195,12 +201,36 @@ fn run(args: Vec<String>) -> Result<()> {
     let dest_dir = shellexpand::tilde(&destination_dir).to_string();
     let dest_dir = Path::new(&dest_dir);
 
+    let temp_dest_dir = tempfile::tempdir()?;
+    let temp_dest_dir = temp_dest_dir.path();
+
+    process_directory(source_dir, temp_dest_dir, dest_dir)
+        .context("Failed to process directory")?;
+
     if args.destination_strategy == DestinationStrategy::Clear {
         info!("Clearing destination directory");
         fs::remove_dir_all(dest_dir).context("Failed to clear destination directory")?;
     }
 
-    process_directory(source_dir, dest_dir).context("Failed to process directory")
+    copy_recursively(temp_dest_dir, dest_dir)?;
+
+    Ok(())
+}
+
+fn copy_recursively(src: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dest.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_recursively(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), dest_path)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -221,6 +251,7 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     use insta::{assert_debug_snapshot, assert_snapshot};
+    use pretty_assertions::assert_eq;
     use std::collections::BTreeMap;
     use std::fs::write;
     use tempfile::tempdir;
@@ -294,19 +325,23 @@ mod tests {
         write(&source_file, content)?;
 
         // Process the file (should not panic, just print error)
-        process_file(&source_file, &dest_file)?;
+        let result = process_file(&source_file, &dest_file);
 
-        let source_contents = fs::read_to_string(&source_file)?;
+        let err = result.unwrap_err();
 
-        assert_snapshot!(source_contents, @r###"
-        # CMD: invalidcommand
-        "###);
+        let error_alternate_output = format!("{:#}", err);
 
-        let processed_content = fs::read_to_string(&dest_file)?;
-
-        assert_snapshot!(processed_content, @r###"
-        # CMD: invalidcommand
-        "###);
+        // the alternate output is not stable between local and CI, so we can't use snapshots here
+        assert!(
+            error_alternate_output.contains("Failed to run command (`invalidcommand`)"),
+            "Error output: {}",
+            error_alternate_output
+        );
+        assert!(
+            error_alternate_output.contains("not found"),
+            "Error output: {}",
+            error_alternate_output
+        );
 
         Ok(())
     }
@@ -332,7 +367,7 @@ mod tests {
         let source_dir = base_dir.join("zsh");
         let dest_dir = base_dir.join("zsh/dist");
 
-        process_directory(&source_dir, &dest_dir).unwrap();
+        process_directory(&source_dir, &dest_dir, &dest_dir).unwrap();
 
         let file_map = fixturify::read(base_dir).unwrap();
 
@@ -384,6 +419,66 @@ mod tests {
             "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
         }
         "###)
+    }
+
+    #[test]
+    fn test_run_with_command_failures() {
+        let env = setup_test_environment();
+
+        let source_files: BTreeMap<String, String> = BTreeMap::from([
+            (
+                "src/rwjblue/dotfiles/zsh/zshrc".to_string(),
+                "# CMD: zomg-wtf-bbq\n".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/plugins/thing.zsh".to_string(),
+                "# CMD: echo 'goodbye world'\n".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/dist/zshrc".to_string(),
+                "# original contents; before running caching".to_string(),
+            ),
+            (
+                "src/rwjblue/dotfiles/zsh/dist/plugins/thing.zsh".to_string(),
+                "# original contents; before running caching".to_string(),
+            ),
+        ]);
+
+        fixturify::write(&env.home, &source_files).unwrap();
+
+        let result = run(vec![
+            "cache-shell-setup".to_string(),
+            "--source=~/src/rwjblue/dotfiles/zsh".to_string(),
+            "--destination=~/src/rwjblue/dotfiles/zsh/dist".to_string(),
+        ]);
+
+        let err = result.unwrap_err();
+        let replace_home_dir = |content: String| -> String {
+            content.replace(&env.home.to_string_lossy().to_string(), "~")
+        };
+        let err_output = replace_home_dir(format!("{:?}", err));
+        #[cfg(target_os = "macos")]
+        {
+            assert_snapshot!(err_output, @r###"
+            Failed to process directory
+
+            Caused by:
+                0: Failed to process file "~/src/rwjblue/dotfiles/zsh/zshrc"
+                1: Failed to run command (`zomg-wtf-bbq`):
+                    sh: zomg-wtf-bbq: command not found
+
+            "###);
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(err_output.contains("zomg-wtf-bbq"));
+            assert!(err_output.contains("not found"));
+        }
+
+        let file_map = fixturify::read(&env.home).unwrap();
+
+        assert_eq!(file_map, source_files);
     }
 
     #[test]
@@ -515,6 +610,40 @@ mod tests {
         # some content returned here!!
         # FETCHED CONTENT END: {server_url}/test
         "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_file_with_invalid_fetch() -> Result<()> {
+        let mut server = mockito::Server::new();
+
+        let server_url = server.url();
+
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(500)
+            .with_header("content-type", "text/plain")
+            .with_body("ZOMG ERROR")
+            .create();
+
+        let dir = tempdir()?;
+        let source_file = dir.path().join("test.zsh");
+        let dest_file = dir.path().join("output.zsh");
+
+        let content = format!("# FETCH: {}/test", server_url);
+        write(&source_file, content)?;
+
+        let replace_server_addr = |content: String, server_url: &str| -> String {
+            content.replace(server_url, "{server_url}")
+        };
+
+        let result = process_file(&source_file, &dest_file);
+
+        let err = result.unwrap_err();
+        assert_snapshot!(replace_server_addr(format!("{:#}", err), &server_url), @"Failed to fetch URL: {server_url}/test: {server_url}/test: status code 500");
+
+        mock.assert();
 
         Ok(())
     }
