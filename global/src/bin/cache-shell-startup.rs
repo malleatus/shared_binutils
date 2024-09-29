@@ -105,7 +105,7 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
     Ok(())
 }
 
-fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
+fn process_directory(source_dir: &Path, dest_dir: &Path, final_dest_dir: &Path) -> Result<()> {
     info!("Scanning directory: {}", source_dir.display());
 
     for entry in fs::read_dir(source_dir)
@@ -114,7 +114,7 @@ fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
         let entry = entry.context("Failed to process directory entry")?;
         let path = entry.path();
 
-        if path.starts_with(dest_dir) {
+        if path.starts_with(final_dest_dir) {
             continue;
         }
 
@@ -125,7 +125,7 @@ fn process_directory(source_dir: &Path, dest_dir: &Path) -> Result<()> {
             let new_dest_dir = dest_dir.join(relative_path);
 
             fs::create_dir_all(&new_dest_dir).context("Failed to create destination directory")?;
-            process_directory(&path, &new_dest_dir)
+            process_directory(&path, &new_dest_dir, final_dest_dir)
                 .context(format!("Failed to process directory {:?}", path))?;
         } else {
             let relative_path = path
@@ -198,13 +198,14 @@ fn run(args: Vec<String>) -> Result<()> {
     let source_dir = shellexpand::tilde(&source_dir).to_string();
     let source_dir = Path::new(&source_dir);
 
+    let dest_dir = shellexpand::tilde(&destination_dir).to_string();
+    let dest_dir = Path::new(&dest_dir);
+
     let temp_dest_dir = tempfile::tempdir()?;
     let temp_dest_dir = temp_dest_dir.path();
 
-    process_directory(source_dir, temp_dest_dir).context("Failed to process directory")?;
-
-    let dest_dir = shellexpand::tilde(&destination_dir).to_string();
-    let dest_dir = Path::new(&dest_dir);
+    process_directory(source_dir, temp_dest_dir, dest_dir)
+        .context("Failed to process directory")?;
 
     if args.destination_strategy == DestinationStrategy::Clear {
         info!("Clearing destination directory");
@@ -366,7 +367,7 @@ mod tests {
         let source_dir = base_dir.join("zsh");
         let dest_dir = base_dir.join("zsh/dist");
 
-        process_directory(&source_dir, &dest_dir).unwrap();
+        process_directory(&source_dir, &dest_dir, &dest_dir).unwrap();
 
         let file_map = fixturify::read(base_dir).unwrap();
 
