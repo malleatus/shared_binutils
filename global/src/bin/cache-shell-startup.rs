@@ -198,6 +198,11 @@ fn run(args: Vec<String>) -> Result<()> {
     let source_dir = shellexpand::tilde(&source_dir).to_string();
     let source_dir = Path::new(&source_dir);
 
+    let temp_dest_dir = tempfile::tempdir()?;
+    let temp_dest_dir = temp_dest_dir.path();
+
+    process_directory(source_dir, temp_dest_dir).context("Failed to process directory")?;
+
     let dest_dir = shellexpand::tilde(&destination_dir).to_string();
     let dest_dir = Path::new(&dest_dir);
 
@@ -206,7 +211,25 @@ fn run(args: Vec<String>) -> Result<()> {
         fs::remove_dir_all(dest_dir).context("Failed to clear destination directory")?;
     }
 
-    process_directory(source_dir, dest_dir).context("Failed to process directory")
+    copy_recursively(temp_dest_dir, dest_dir)?;
+
+    Ok(())
+}
+
+fn copy_recursively(src: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dest.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_recursively(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), dest_path)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn main() -> Result<()> {
