@@ -159,7 +159,14 @@ fn gather_crate_info_from_location(
             for member in members {
                 if let Some(member_path) = member.as_str() {
                     let path = path.join(member_path);
-                    gather_crate_info_from_location(&path, crates)?;
+
+                    let pattern_str = path.to_string_lossy();
+
+                    for entry in glob::glob(&pattern_str)? {
+                        let entry = entry?;
+
+                        gather_crate_info_from_location(&entry, crates)?;
+                    }
                 }
             }
         }
@@ -1177,6 +1184,62 @@ mod tests {
         {
             "bar": "~/workspace/bar/target/debug/",
             "baz": "~/workspace/baz/target/debug/",
+            "foo": "~/workspace/foo/target/debug/",
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn gather_crate_locations_with_workspace_globs() -> Result<()> {
+        let env = setup_test_environment();
+
+        let workspace_dir = env.home.join("workspace");
+        create_workspace_with_packages(
+            workspace_dir.as_path(),
+            vec![FakePackage {
+                name: "foo".to_string(),
+                bins: vec![],
+            }],
+        );
+
+        test_utils::create_crate(
+            &workspace_dir.join("crates/bar"),
+            FakePackage {
+                name: "bar".to_string(),
+                bins: vec![],
+            },
+        );
+
+        test_utils::create_crate(
+            &workspace_dir.join("crates/baz"),
+            FakePackage {
+                name: "baz".to_string(),
+                bins: vec![],
+            },
+        );
+
+        fs::write(
+            workspace_dir.join("Cargo.toml"),
+            r###"
+        [workspace]
+        members = ["foo", "crates/*"]
+        "###,
+        )?;
+
+        let config = Config {
+            crate_locations: Some(vec![String::from("~/workspace")]),
+            tmux: None,
+            shell_caching: None,
+        };
+
+        let crates = gather_crate_locations(&config)?;
+        let debug_output = format!("{:#?}", crates);
+        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
+        {
+            "bar": "~/workspace/crates/bar/target/debug/",
+            "baz": "~/workspace/crates/baz/target/debug/",
             "foo": "~/workspace/foo/target/debug/",
         }
         "###);

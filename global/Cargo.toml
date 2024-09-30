@@ -23,6 +23,7 @@ regex = { workspace = true }
 shellexpand = { workspace = true }
 ureq = { workspace = true }
 tempfile = { workspace = true }
+glob = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
