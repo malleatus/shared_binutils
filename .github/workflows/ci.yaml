@@ -30,7 +30,7 @@ jobs:
 
       - run: tmux -V
 
-      - run: cargo nextest run --workspace
+      - run: cargo nextest run --workspace --no-fail-fast
 
   lint:
     runs-on: ubuntu-latest
