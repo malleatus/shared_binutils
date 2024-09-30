@@ -96,38 +96,7 @@ pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePa
     for package in packages {
         // Create package directory
         let package_dir = workspace_dir.join(&package.name);
-        fs::create_dir_all(&package_dir).unwrap();
-
-        // Create package Cargo.toml
-        let package_toml = package_dir.join("Cargo.toml");
-        let mut package_file = File::create(&package_toml).unwrap();
-        writeln!(
-            package_file,
-            "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
-            package.name
-        )
-        .unwrap();
-
-        // Write an empty `src/lib.rs` (makes crates without bins valid)
-        let src_dir = package_dir.join("src");
-        fs::create_dir_all(&src_dir).unwrap();
-        fs::write(src_dir.join("lib.rs"), "").unwrap();
-
-        // Create src/bin directory and bin files
-        let src_bin_dir = package_dir.join("src/bin");
-        fs::create_dir_all(&src_bin_dir).unwrap();
-        for bin in package.bins {
-            let bin_rs = src_bin_dir.join(format!("{}.rs", bin.name));
-            let contents = bin.contents.unwrap_or_else(|| {
-                r###"
-                fn main() {
-                    println!("{:?}", std::env::current_exe().unwrap());
-                }
-                "###
-                .to_string()
-            });
-            fs::write(bin_rs, contents).unwrap();
-        }
+        create_crate(&package_dir, package);
     }
 
     // Run `cargo build` within the workspace to generate the `target/` directory and binaries
@@ -142,6 +111,41 @@ pub fn create_workspace_with_packages(workspace_dir: &Path, packages: Vec<FakePa
             "cargo build failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+}
+
+pub fn create_crate(package_dir: &Path, package: FakePackage) {
+    fs::create_dir_all(package_dir).unwrap();
+
+    // Create package Cargo.toml
+    let package_toml = package_dir.join("Cargo.toml");
+    let mut package_file = File::create(&package_toml).unwrap();
+    writeln!(
+        package_file,
+        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+        package.name
+    )
+    .unwrap();
+
+    // Write an empty `src/lib.rs` (makes crates without bins valid)
+    let src_dir = package_dir.join("src");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::write(src_dir.join("lib.rs"), "").unwrap();
+
+    // Create src/bin directory and bin files
+    let src_bin_dir = package_dir.join("src/bin");
+    fs::create_dir_all(&src_bin_dir).unwrap();
+    for bin in package.bins {
+        let bin_rs = src_bin_dir.join(format!("{}.rs", bin.name));
+        let contents = bin.contents.unwrap_or_else(|| {
+            r###"
+                fn main() {
+                    println!("{:?}", std::env::current_exe().unwrap());
+                }
+                "###
+            .to_string()
+        });
+        fs::write(bin_rs, contents).unwrap();
     }
 }
 
