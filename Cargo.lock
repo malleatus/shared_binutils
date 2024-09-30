@@ -489,6 +489,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32085ea23f3234fc7846555e85283ba4de91e21016dc0455a16286d87a292d64"
 
 [[package]]
+name = "glob"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
 name = "global"
 version = "0.1.0"
 dependencies = [
@@ -497,6 +503,7 @@ dependencies = [
  "clap",
  "config",
  "fixturify",
+ "glob",
  "insta",
  "latest_bin",
  "mockito",
