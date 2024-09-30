@@ -7,6 +7,99 @@ use std::process::Command;
 use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 
+enum LineAction {
+    Command { command: String, silent: bool },
+    Fetch(String),
+    Other(String),
+}
+
+fn parse_line(line: &str) -> LineAction {
+    if let Some(command) = line.strip_prefix("# CMD:") {
+        LineAction::Command {
+            command: command.trim().to_string(),
+            silent: false,
+        }
+    } else if let Some(command) = line.strip_prefix("# CMD_SILENT:") {
+        LineAction::Command {
+            command: command.trim().to_string(),
+            silent: true,
+        }
+    } else if let Some(url) = line.strip_prefix("# FETCH:") {
+        LineAction::Fetch(url.trim().to_string())
+    } else {
+        LineAction::Other(line.to_string())
+    }
+}
+
+fn handle_command(command: String, silent: bool) -> Result<Vec<String>> {
+    let mut result = Vec::new();
+
+    if !silent {
+        result.push(format!("# CMD: {}", &command));
+    }
+
+    trace!("Running command: {}", &command);
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(&command)
+        .output()
+        .context(format!("Failed to execute command (`{}`)", &command))?;
+
+    if output.status.success() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+
+        if silent {
+            result.push(output_str.to_string());
+        } else {
+            result.push(format!(
+                "# OUTPUT START: {}\n{}\n# OUTPUT END: {}",
+                &command, output_str, &command
+            ));
+        }
+        Ok(result)
+    } else {
+        let error_message = format!(
+            "Failed to run command (`{}`):\n{}",
+            &command,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        anyhow::bail!("{}", error_message);
+    }
+}
+
+fn handle_fetch(url: String) -> Result<Vec<String>> {
+    let mut result = Vec::new();
+    result.push(format!("# FETCH: {}", &url));
+    trace!("Fetching URL: {}", &url);
+
+    let response = ureq::get(&url)
+        .call()
+        .context(format!("Failed to fetch URL: {}", &url))?;
+
+    if response.status() == 200 {
+        let content = response
+            .into_string()
+            .context("Failed to read response content")?;
+        result.push(format!(
+            "# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}",
+            &url, content, &url
+        ));
+        Ok(result)
+    } else {
+        let status = response.status();
+        let error_body = response
+            .into_string()
+            .unwrap_or_else(|_| "Failed to read error response body".to_string());
+        anyhow::bail!(
+            "Failed to fetch URL '{}' (Status Code: {}):\nError Body: {}",
+            &url,
+            status,
+            error_body
+        );
+    }
+}
+
 fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
     let source_file = source_file.as_ref();
     let dest_file = dest_file.as_ref();
@@ -20,90 +113,18 @@ fn process_file<S: AsRef<Path>>(source_file: S, dest_file: S) -> Result<()> {
 
     for line in reader.lines() {
         let line = line.context("Failed to read line")?;
-
-        if let Some(command) = line.strip_prefix("# CMD:") {
-            let trimmed_command = command.trim();
-
-            new_content.push(format!("# CMD: {}", trimmed_command));
-
-            trace!("Running command: {}", trimmed_command);
-
-            let output = Command::new("sh")
-                .arg("-c")
-                .arg(trimmed_command)
-                .output()
-                .context(format!("Failed to execute command (`{}`)", trimmed_command))?;
-
-            if output.status.success() {
-                let output_str = String::from_utf8_lossy(&output.stdout);
-                new_content.push(format!(
-                    "# OUTPUT START: {}\n{}\n# OUTPUT END: {}",
-                    trimmed_command, output_str, trimmed_command
-                ));
-            } else {
-                let error_message = format!(
-                    "Failed to run command (`{}`):\n {}",
-                    trimmed_command,
-                    String::from_utf8_lossy(&output.stderr)
-                );
-
-                anyhow::bail!("{}", error_message);
+        match parse_line(&line) {
+            LineAction::Command { command, silent } => {
+                let lines = handle_command(command, silent)?;
+                new_content.extend(lines);
             }
-        } else if let Some(command) = line.strip_prefix("# CMD_SILENT:") {
-            let trimmed_command = command.trim();
-
-            trace!("Running command: {}", trimmed_command);
-
-            let output = Command::new("sh")
-                .arg("-c")
-                .arg(trimmed_command)
-                .output()
-                .context(format!("Failed to execute command (`{}`)", trimmed_command))?;
-
-            if output.status.success() {
-                new_content.push(String::from_utf8_lossy(&output.stdout).to_string());
-            } else {
-                let error_message = format!(
-                    "Failed to run command (`{}`):\n {}",
-                    trimmed_command,
-                    String::from_utf8_lossy(&output.stderr)
-                );
-
-                anyhow::bail!("{}", error_message);
+            LineAction::Fetch(url) => {
+                let lines = handle_fetch(url)?;
+                new_content.extend(lines);
             }
-        } else if let Some(url) = line.strip_prefix("# FETCH:") {
-            let trimmed_url = url.trim();
-
-            new_content.push(format!("# FETCH: {}", trimmed_url));
-
-            trace!("Fetching URL: {}", trimmed_url);
-
-            let response = ureq::get(trimmed_url)
-                .call()
-                .context(format!("Failed to fetch URL: {}", trimmed_url))?;
-
-            if response.status() == 200 {
-                let content = response
-                    .into_string()
-                    .context("Failed to read response content")?;
-                new_content.push(format!(
-                    "# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}",
-                    trimmed_url, content, trimmed_url
-                ));
-            } else {
-                let status = response.status();
-                let error_body = response
-                    .into_string()
-                    .unwrap_or_else(|_| "Failed to read error response body".to_string());
-                anyhow::bail!(
-                    "Failed to fetch URL '{}' (Status Code: {}):\nError Body: {}",
-                    trimmed_url,
-                    status,
-                    error_body
-                );
+            LineAction::Other(line) => {
+                new_content.push(line);
             }
-        } else {
-            new_content.push(line);
         }
     }
 
@@ -513,8 +534,8 @@ mod tests {
             Caused by:
                 0: Failed to process file "~/src/rwjblue/dotfiles/zsh/zshrc"
                 1: Failed to run command (`zomg-wtf-bbq`):
-                    sh: zomg-wtf-bbq: command not found
-
+                   sh: zomg-wtf-bbq: command not found
+                   
             "###);
         }
 
