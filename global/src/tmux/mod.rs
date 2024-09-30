@@ -1,9 +1,11 @@
 use anyhow::Result;
+use std::fs;
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 use tracing::{debug, trace};
 
-use config::{Command as ConfigCommand, Config, Window};
+use config::{Config, Window};
 
 /// `TmuxOptions` is a trait for managing various options for working with these tmux utilities.
 ///
@@ -49,12 +51,20 @@ pub fn startup_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Vec<S
     let mut current_state = gather_tmux_state(options);
     let mut commands = vec![];
 
+    let crates = gather_crate_locations(config)?;
+
     match &config.tmux {
         Some(tmux) => {
             for session in &tmux.sessions {
                 for (index, window) in session.windows.iter().enumerate() {
-                    let commands_executed =
-                        ensure_window(&session.name, window, &index, &mut current_state, options)?;
+                    let commands_executed = ensure_window(
+                        &session.name,
+                        window,
+                        &index,
+                        &crates,
+                        &mut current_state,
+                        options,
+                    )?;
 
                     for command in commands_executed {
                         commands.push(generate_debug_string_for_command(&command));
@@ -111,29 +121,62 @@ fn maybe_attach_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Opti
     }
 }
 
-#[allow(dead_code)]
+fn gather_crate_locations(config: &Config) -> Result<BTreeMap<String, PathBuf>> {
+    debug!("Gathering crate locations");
+
+    let mut crates = BTreeMap::new();
+    if let Some(crate_locations) = &config.crate_locations {
+        for location in crate_locations {
+            trace!("Processing location: {}", location);
+
+            gather_crate_info_from_location(Path::new(location), &mut crates)?;
+        }
+    }
+
+    Ok(crates)
+}
+
+fn gather_crate_info_from_location(
+    path: &Path,
+    crates: &mut BTreeMap<String, PathBuf>,
+) -> Result<()> {
+    let cargo_toml_path = path.join("Cargo.toml");
+    let contents = fs::read_to_string(cargo_toml_path)?;
+
+    let parsed: toml::Value = contents.parse()?;
+    if let Some(workspace) = parsed.get("workspace") {
+        if let Some(members) = workspace.get("members").and_then(|m| m.as_array()) {
+            for member in members {
+                if let Some(member_path) = member.as_str() {
+                    let path = path.join(member_path);
+                    gather_crate_info_from_location(&path, crates)?;
+                }
+            }
+        }
+    } else if let Some(crate_name) = parsed
+        .get("package")
+        .and_then(|pkg| pkg.get("name"))
+        .and_then(|name| name.as_str())
+    {
+        trace!("Found crate ({}): {}", crate_name, path.display());
+
+        crates.insert(crate_name.to_string(), path.join("target/debug/"));
+    }
+
+    Ok(())
+}
+
 fn determine_commands_for_window(
     window: &Window,
-    crates: BTreeMap<String, PathBuf>,
+    crates: &BTreeMap<String, PathBuf>,
 ) -> Result<Option<Vec<String>>> {
-    let mut commands: Vec<String> = if let Some(command) = &window.command {
-        match command {
-            config::Command::Single(cmd) => vec![cmd.clone()],
-            config::Command::Multiple(cmds) => cmds.clone(),
-        }
-    } else if window.linked_crates.is_some() {
-        vec![]
-    } else {
-        // no command, no linked crates; nothing to do
-        return Ok(None);
-    };
+    let mut commands: Vec<String> = vec![];
 
     if let Some(linked_crates) = &window.linked_crates {
-        // TODO: find the linked_crates using crate_locations and add them to the PATH
         for linked_crate in linked_crates {
             if let Some(crate_path) = crates.get(linked_crate) {
                 let new_command = format!(
-                    "export PATH={}:$PATH",
+                    r#"export PATH="{}:$PATH""#,
                     crate_path.to_str().unwrap_or_default()
                 );
                 commands.push(new_command);
@@ -145,6 +188,13 @@ fn determine_commands_for_window(
                 );
             }
         }
+    }
+
+    if let Some(command) = &window.command {
+        match command {
+            config::Command::Single(cmd) => commands.push(cmd.clone()),
+            config::Command::Multiple(cmds) => commands.extend(cmds.clone()),
+        };
     }
 
     if commands.is_empty() {
@@ -178,6 +228,7 @@ fn ensure_window(
     session_name: &str,
     window: &Window,
     window_index: &usize,
+    crates: &BTreeMap<String, PathBuf>,
     current_state: &mut TmuxState,
     options: &impl TmuxOptions,
 ) -> Result<Vec<Command>> {
@@ -225,7 +276,7 @@ fn ensure_window(
             }
 
             commands_executed.push(run_command(cmd, options)?);
-            commands_executed.extend(execute_command(session_name, window, options)?);
+            commands_executed.extend(execute_command(session_name, window, crates, options)?);
 
             windows.insert(*window_index, window.name.to_string());
         }
@@ -260,7 +311,7 @@ fn ensure_window(
         commands_executed.push(run_command(cmd, options)?);
 
         // push any commands referenced in the config for the window
-        commands_executed.extend(execute_command(session_name, window, options)?);
+        commands_executed.extend(execute_command(session_name, window, crates, options)?);
 
         current_state.insert(session_name.to_string(), vec![window.name.to_string()]);
     }
@@ -273,13 +324,16 @@ fn ensure_window(
 fn execute_command(
     session_name: &str,
     window: &Window,
+    crates: &BTreeMap<String, PathBuf>,
     options: &impl TmuxOptions,
 ) -> Result<Vec<Command>> {
     let mut commands_executed = vec![];
+    let commands_to_execute = determine_commands_for_window(window, crates)?;
 
-    if let Some(command) = &window.command {
-        match command {
-            ConfigCommand::Single(command) => {
+    match commands_to_execute {
+        None => {}
+        Some(commands) => {
+            for command in commands {
                 let mut cmd = Command::new("tmux");
                 cmd.arg("-L")
                     .arg(get_socket_name(options))
@@ -288,24 +342,8 @@ fn execute_command(
                     .arg(format!("{}:{}", session_name, window.name))
                     .arg(command)
                     .arg("Enter");
-
                 let cmd = run_command(cmd, options)?;
                 commands_executed.push(cmd);
-            }
-            ConfigCommand::Multiple(commands) => {
-                for command in commands {
-                    let mut cmd = Command::new("tmux");
-                    cmd.arg("-L")
-                        .arg(get_socket_name(options))
-                        .arg("send-keys")
-                        .arg("-t")
-                        .arg(format!("{}:{}", session_name, window.name))
-                        .arg(command)
-                        .arg("Enter");
-
-                    let cmd = run_command(cmd, options)?;
-                    commands_executed.push(cmd);
-                }
             }
         }
     }
@@ -433,6 +471,7 @@ mod tests {
     };
 
     use anyhow::Result;
+    use config::Command as ConfigCommand;
     use insta::assert_debug_snapshot;
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
@@ -1100,10 +1139,32 @@ mod tests {
             linked_crates: None,
         };
         let crates = BTreeMap::new();
-        let result = determine_commands_for_window(&window, crates).unwrap();
+        let result = determine_commands_for_window(&window, &crates).unwrap();
         assert_debug_snapshot!(result, @r###"
         Some(
             [
+                "echo Hello",
+            ],
+        )
+        "###);
+    }
+
+    #[test]
+    fn determine_commands_for_window_single_command_and_linked_crates() {
+        let window = Window {
+            path: None,
+            env: None,
+            name: "test_window".to_string(),
+            command: Some(config::Command::Single("echo Hello".to_string())),
+            linked_crates: Some(vec!["crate1".to_string()]),
+        };
+        let mut crates = BTreeMap::new();
+        crates.insert("crate1".to_string(), PathBuf::from("/path/to/crate1"));
+        let result = determine_commands_for_window(&window, &crates).unwrap();
+        assert_debug_snapshot!(result, @r###"
+        Some(
+            [
+                "export PATH=\"/path/to/crate1:$PATH\"",
                 "echo Hello",
             ],
         )
@@ -1123,7 +1184,7 @@ mod tests {
             linked_crates: None,
         };
         let crates = BTreeMap::new();
-        let result = determine_commands_for_window(&window, crates).unwrap();
+        let result = determine_commands_for_window(&window, &crates).unwrap();
         assert_debug_snapshot!(result, @r###"
         Some(
             [
@@ -1145,11 +1206,11 @@ mod tests {
         };
         let mut crates = BTreeMap::new();
         crates.insert("crate1".to_string(), PathBuf::from("/path/to/crate1"));
-        let result = determine_commands_for_window(&window, crates).unwrap();
+        let result = determine_commands_for_window(&window, &crates).unwrap();
         assert_debug_snapshot!(result, @r###"
         Some(
             [
-                "export PATH=/path/to/crate1:$PATH",
+                "export PATH=\"/path/to/crate1:$PATH\"",
             ],
         )
         "###);
@@ -1165,7 +1226,7 @@ mod tests {
             linked_crates: None,
         };
         let crates = BTreeMap::new();
-        let result = determine_commands_for_window(&window, crates).unwrap();
+        let result = determine_commands_for_window(&window, &crates).unwrap();
         assert_debug_snapshot!(result, @"None");
     }
 
@@ -1179,7 +1240,7 @@ mod tests {
             linked_crates: Some(vec!["missing_crate".to_string()]),
         };
         let crates = BTreeMap::new();
-        let result = determine_commands_for_window(&window, crates);
+        let result = determine_commands_for_window(&window, &crates);
 
         assert_debug_snapshot!(result, @r###"
         Err(
@@ -1189,7 +1250,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_linked_crates() -> Result<()> {
         let temp_dir = tempdir()?;
         let options = build_testing_options();
@@ -1223,7 +1283,7 @@ mod tests {
             crate_locations: Some(vec![workspace_dir.to_string_lossy().to_string()]),
             shell_caching: None,
             tmux: Some(Tmux {
-                default_session: Some("foo".to_string()),
+                default_session: None,
                 sessions: vec![Session {
                     name: "foo".to_string(),
                     windows: vec![Window {
@@ -1249,7 +1309,9 @@ mod tests {
         assert_debug_snapshot!(commands, @r###"
         [
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar -c [TEMP_DIR]/working_dir",
+            "tmux -L [SOCKET_NAME] send-keys -t foo:bar 'export PATH=\"[TEMP_DIR]/workspace/foo/target/debug/:$PATH\"' Enter",
             "tmux -L [SOCKET_NAME] send-keys -t foo:bar bar Enter",
+            "tmux attach",
         ]
         "###);
 
@@ -1263,5 +1325,4 @@ mod tests {
     }
 
     // TODO: validate paths eagerly (and error instead of running & failing)
-    // TODO: support project specific crates that automatically get added to $PATH within the window
 }
