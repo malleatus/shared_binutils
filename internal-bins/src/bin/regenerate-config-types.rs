@@ -18,14 +18,6 @@ fn generate_lua_types() -> Result<()> {
     internal_bins::lua::process_file(
         crate_root.join("../config/src/lib.rs"),
         crate_root.join("../config/init.lua"),
-        vec![
-            "Config",
-            "ShellCache",
-            "Tmux",
-            "Session",
-            "Command",
-            "Window",
-        ],
     );
 
     Ok(())
