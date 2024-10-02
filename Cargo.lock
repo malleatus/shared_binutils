@@ -264,7 +264,7 @@ dependencies = [
  "fixturify",
  "insta",
  "latest_bin",
- "mlua",
+ "lua_config_utils",
  "regex",
  "serde",
  "tempfile",
@@ -812,6 +812,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1edaf29e3517b49b8b746701e5648ccb5785cde1c119062cbabbc5d5cd115e42"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "lua_config_utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fixturify",
+ "insta",
+ "mlua",
+ "regex",
+ "serde",
+ "shellexpand",
+ "tempfile",
+ "test_utils",
+ "tracing",
 ]
 
 [[package]]

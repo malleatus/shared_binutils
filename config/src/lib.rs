@@ -1,11 +1,9 @@
-use mlua::{Lua, LuaSerdeExt};
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, error, trace};
+use tracing::trace;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the application.
@@ -88,14 +86,6 @@ pub struct Window {
     pub linked_crates: Option<Vec<String>>,
 }
 
-fn default_config() -> Config {
-    Config {
-        crate_locations: None,
-        shell_caching: None,
-        tmux: None,
-    }
-}
-
 fn path_to_string<S>(path: &Option<PathBuf>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -159,23 +149,7 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
 
 pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
     let config_path = match config_path {
-        Some(config_path) => {
-            let config_path = expand_tilde(config_path);
-
-            if !config_path.is_file() {
-                error!(
-                    "The specified config path is not a file: {}",
-                    config_path.display()
-                );
-
-                return Err(anyhow::anyhow!(
-                    "The specified config path is not a file: {}",
-                    config_path.display()
-                ));
-            }
-
-            config_path
-        }
+        Some(config_path) => expand_tilde(config_path),
         None => {
             trace!("No config path specified, using default config path");
 
@@ -190,52 +164,15 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
         }
     };
 
-    let config = if config_path.is_file() {
-        debug!("Reading config from: {}", config_path.display());
-
-        let lua = Lua::new();
-        let globals = lua.globals();
-        let config_dir = config_path.parent().map(PathBuf::from).unwrap_or_else(|| {
-            let home_dir = env::var("HOME").expect("HOME environment variable not set");
-            PathBuf::from(home_dir)
+    if !config_path.is_file() {
+        return Ok(Config {
+            tmux: None,
+            shell_caching: None,
+            crate_locations: None,
         });
+    }
 
-        let package: mlua::Table = globals.get("package")?;
-        let package_path: String = package.get("path")?;
-
-        let new_package_path = format!(
-            "{}/?.lua;{}/?/init.lua;{}",
-            config_dir.display(),
-            config_dir.display(),
-            package_path
-        );
-        package.set("path", new_package_path)?;
-        let config_str = fs::read_to_string(&config_path).with_context(|| {
-            format!(
-                "Could not read config file from: {}",
-                &config_path.display()
-            )
-        })?;
-        let result = lua
-            .load(&config_str)
-            .set_name(config_path.to_string_lossy())
-            .eval()?;
-
-        let config: Config = lua.from_value(result)?;
-
-        config
-    } else {
-        debug!(
-            "Using default config. No config file found at: {}",
-            config_path.display()
-        );
-
-        default_config()
-    };
-
-    trace!("Config: {:?}", config);
-
-    Ok(config)
+    lua_config_utils::read_config(&config_path)
 }
 
 #[cfg(test)]
@@ -243,6 +180,7 @@ mod tests {
     use super::*;
     use insta::{assert_debug_snapshot, assert_snapshot};
     use std::env;
+    use std::fs;
     use tempfile::tempdir;
     use test_utils::{setup_test_environment, stabilize_home_paths};
 
@@ -622,16 +560,6 @@ mod tests {
         assert_snapshot!(error_string, @r###"syntax error: [string "{truncated path}"]:1: syntax error near 'lua'"###);
 
         Ok(())
-    }
-
-    #[test]
-    fn test_read_config_missing_file_specified() {
-        let _env = setup_test_environment();
-
-        let result = read_config(Some(PathBuf::from("/some/nonexistent/file")));
-        let err = result.unwrap_err();
-
-        assert_snapshot!(err, @"The specified config path is not a file: /some/nonexistent/file");
     }
 
     #[test]

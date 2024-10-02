@@ -1,23 +1,17 @@
 [package]
-name = "config"
-edition.workspace = true
+name = "lua_config_utils"
+edition = "2021"
 rust-version.workspace = true
 license.workspace = true
 version.workspace = true
 authors.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 anyhow = { workspace = true }
-clap = { workspace = true }
-latest_bin = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-lua_config_utils = { workspace = true }
 serde = { workspace = true }
-
+mlua = { workspace = true }
+shellexpand = { workspace = true }
 
 [dev-dependencies]
 regex = { workspace = true }
@@ -25,3 +19,6 @@ insta = { workspace = true }
 tempfile = { workspace = true }
 test_utils = { workspace = true }
 fixturify = { workspace = true }
+
+[lints]
+workspace = true

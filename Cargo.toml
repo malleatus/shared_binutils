@@ -8,6 +8,7 @@ members = [
   "test_utils",
   "global",
   "shell",
+  "lua_config_utils",
 ]
 
 [workspace.package]
@@ -45,6 +46,7 @@ config = { path = "config" }
 latest_bin = { path = "latest_bin" }
 test_utils = { path = "test_utils" }
 fixturify = { path = "fixturify" }
+lua_config_utils = { path = "lua_config_utils" }
 cargo_metadata = "0.18.1"
 ignore = "0.4.18"
 mlua = { version = "0.9.7", features = ["lua54", "vendored", "serialize"] }
