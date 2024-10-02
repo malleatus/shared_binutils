@@ -1,14 +1,14 @@
 use std::fs;
 use std::path::Path;
-use syn::{Attribute, File, Item, Type, TypePath};
+use syn::{punctuated::Punctuated, Attribute, File, Item, Token, Type, TypePath};
 
-pub fn process_file<S: AsRef<Path>>(input_path: S, output_path: S, identifiers: Vec<&str>) {
-    let lua_types = generate_lua_types_from_file(input_path, &identifiers);
+pub fn process_file<S: AsRef<Path>>(input_path: S, output_path: S) {
+    let lua_types = generate_lua_types_from_file(input_path);
     fs::write(output_path, &lua_types).unwrap();
     println!("{}", lua_types);
 }
 
-fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S, identifiers: &[&str]) -> String {
+fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S) -> String {
     let content = fs::read_to_string(file_path).expect("Unable to read file");
     let syntax: File = syn::parse_file(&content).expect("Unable to parse file");
 
@@ -16,17 +16,12 @@ fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S, identifiers: &[&st
 
     for item in syntax.items {
         if let Item::Struct(item_struct) = item {
-            let struct_name = item_struct.ident.to_string();
-
-            if identifiers.contains(&struct_name.as_str()) {
+            if has_derive_deserialize(&item_struct.attrs) {
                 output.push_str(&generate_lua_types_for_struct(&item_struct));
                 output.push('\n');
             }
         } else if let Item::Enum(item_enum) = item {
-            let enum_name = item_enum.ident.to_string();
-
-            // Handle the specific Command enum or any enum you want to alias
-            if identifiers.contains(&enum_name.as_str()) {
+            if has_derive_deserialize(&item_enum.attrs) {
                 output.push_str(&generate_lua_enum_alias(&item_enum));
                 output.push('\n');
             }
@@ -34,6 +29,26 @@ fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S, identifiers: &[&st
     }
 
     output
+}
+
+fn has_derive_deserialize(attrs: &[Attribute]) -> bool {
+    for attr in attrs {
+        if attr.path().is_ident("derive") {
+            let result = attr.parse_args_with(|input: syn::parse::ParseStream| {
+                let paths = Punctuated::<syn::Path, Token![,]>::parse_terminated(input)?;
+                for path in paths {
+                    if path.is_ident("Deserialize") {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            });
+            if let Ok(true) = result {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn generate_lua_types_for_struct(item_struct: &syn::ItemStruct) -> String {
@@ -248,6 +263,7 @@ mod tests {
             &source_file,
             r###"
 /// Configuration for the application.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     /// Optional tmux configuration. Including sessions and windows to be created.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -331,18 +347,7 @@ pub struct Window {
 
         let output_path = temp_dir.path().join("init.lua");
 
-        process_file(
-            source_file,
-            output_path.clone(),
-            vec![
-                "Config",
-                "ShellCache",
-                "Tmux",
-                "Session",
-                "Command",
-                "Window",
-            ],
-        );
+        process_file(source_file, output_path.clone());
 
         assert_snapshot!(fs::read_to_string(output_path).unwrap(), @r###"
         ---  Configuration for the application.
