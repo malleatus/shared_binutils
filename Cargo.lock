@@ -819,15 +819,19 @@ name = "lua_config_utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "fixturify",
  "insta",
+ "latest_bin",
  "mlua",
  "regex",
  "serde",
  "shellexpand",
+ "syn",
  "tempfile",
  "test_utils",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

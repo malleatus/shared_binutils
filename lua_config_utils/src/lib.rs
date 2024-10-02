@@ -8,6 +8,8 @@ use tracing::{debug, error, trace};
 
 use anyhow::{Context, Result};
 
+pub mod lua_type_gen;
+
 pub fn read_config<T: DeserializeOwned + Debug>(config_path: &Path) -> Result<T> {
     if !config_path.is_file() {
         error!(
