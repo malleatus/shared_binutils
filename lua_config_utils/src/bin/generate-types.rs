@@ -29,7 +29,7 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    internal_bins::lua::process_file(args.input, args.output);
+    lua_config_utils::lua_type_gen::process_file(args.input, args.output);
 
     Ok(())
 }
