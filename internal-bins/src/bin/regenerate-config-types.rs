@@ -4,23 +4,17 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tracing_subscriber::EnvFilter;
 
+/// Generate lua types for a given file's desearializable structs
 #[derive(Parser, Debug)]
-#[command(name = "Regenerate config's Lua types")]
+#[command()]
 struct Args {
-    /// Sets the output file path. Defaults to `config_schema.json` in the crate root.
+    /// Sets the input file (the rust file that contains the structs)
     #[arg(short, long, value_name = "FILE")]
-    output: Option<String>,
-}
+    input: PathBuf,
 
-fn generate_lua_types() -> Result<()> {
-    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    internal_bins::lua::process_file(
-        crate_root.join("../config/src/lib.rs"),
-        crate_root.join("../config/init.lua"),
-    );
-
-    Ok(())
+    /// Sets the output file path (where the `.lua` type output should go)
+    #[arg(short, long, value_name = "FILE")]
+    output: PathBuf,
 }
 
 fn main() -> Result<()> {
@@ -33,7 +27,9 @@ fn main() -> Result<()> {
 
     latest_bin::ensure_latest_bin()?;
 
-    generate_lua_types()?;
+    let args = Args::parse();
+
+    internal_bins::lua::process_file(args.input, args.output);
 
     Ok(())
 }
