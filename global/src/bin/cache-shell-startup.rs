@@ -7,6 +7,7 @@ use std::process::Command;
 use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 
+#[derive(Debug)]
 enum LineAction {
     Command { command: String, silent: bool },
     Fetch(String),
@@ -14,17 +15,19 @@ enum LineAction {
 }
 
 fn parse_line(line: &str) -> LineAction {
-    if let Some(command) = line.strip_prefix("# CMD:") {
+    let trimmed_line = line.trim_start();
+
+    if let Some(command) = trimmed_line.strip_prefix("# CMD:") {
         LineAction::Command {
             command: command.trim().to_string(),
             silent: false,
         }
-    } else if let Some(command) = line.strip_prefix("# CMD_SILENT:") {
+    } else if let Some(command) = trimmed_line.strip_prefix("# CMD_SILENT:") {
         LineAction::Command {
             command: command.trim().to_string(),
             silent: true,
         }
-    } else if let Some(url) = line.strip_prefix("# FETCH:") {
+    } else if let Some(url) = trimmed_line.strip_prefix("# FETCH:") {
         LineAction::Fetch(url.trim().to_string())
     } else {
         LineAction::Other(line.to_string())
@@ -299,6 +302,70 @@ mod tests {
     use std::fs::write;
     use tempfile::tempdir;
     use test_utils::setup_test_environment;
+
+    #[test]
+    fn test_parse_command() {
+        assert_debug_snapshot!(parse_line("# CMD: echo hello"), @r###"
+        Command {
+            command: "echo hello",
+            silent: false,
+        }
+        "###);
+
+        assert_debug_snapshot!(parse_line("   # CMD: echo hello"), @r###"
+        Command {
+            command: "echo hello",
+            silent: false,
+        }
+        "###);
+    }
+
+    #[test]
+    fn test_parse_command_silent() {
+        assert_debug_snapshot!(parse_line("# CMD_SILENT: echo hello"), @r###"
+        Command {
+            command: "echo hello",
+            silent: true,
+        }
+        "###);
+
+        assert_debug_snapshot!(parse_line("     # CMD_SILENT: echo hello"), @r###"
+        Command {
+            command: "echo hello",
+            silent: true,
+        }
+        "###);
+    }
+
+    #[test]
+    fn test_parse_fetch() {
+        assert_debug_snapshot!(parse_line("# FETCH: http://example.com"), @r###"
+        Fetch(
+            "http://example.com",
+        )
+        "###);
+
+        assert_debug_snapshot!(parse_line("    # FETCH: http://example.com"), @r###"
+        Fetch(
+            "http://example.com",
+        )
+        "###);
+    }
+
+    #[test]
+    fn test_parse_other() {
+        assert_debug_snapshot!(parse_line("This is a regular line"), @r###"
+        Other(
+            "This is a regular line",
+        )
+        "###);
+
+        assert_debug_snapshot!(parse_line("      This is a regular line"), @r###"
+        Other(
+            "      This is a regular line",
+        )
+        "###);
+    }
 
     #[test]
     fn test_process_file_with_valid_command() -> Result<()> {
