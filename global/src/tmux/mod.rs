@@ -1,11 +1,9 @@
 use anyhow::Result;
-use std::fs;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 use tracing::{debug, trace};
 
-use config::{Config, Window};
+use config::{gather_crate_locations, Config, Window};
 
 /// `TmuxOptions` is a trait for managing various options for working with these tmux utilities.
 ///
@@ -119,68 +117,6 @@ fn maybe_attach_tmux(config: &Config, options: &impl TmuxOptions) -> Result<Opti
         );
         Ok(Some(cmd))
     }
-}
-
-fn gather_crate_locations(config: &Config) -> Result<BTreeMap<String, PathBuf>> {
-    debug!("Gathering crate locations");
-
-    let mut crates = BTreeMap::new();
-    if let Some(crate_locations) = &config.crate_locations {
-        for location in crate_locations {
-            trace!("Processing location: {}", location);
-
-            let location = shellexpand::tilde(&location).to_string();
-            gather_crate_info_from_location(Path::new(&location), &mut crates)?;
-        }
-    }
-
-    Ok(crates)
-}
-
-fn gather_crate_info_from_location(
-    path: &Path,
-    crates: &mut BTreeMap<String, PathBuf>,
-) -> Result<()> {
-    let cargo_toml_path = path.join("Cargo.toml");
-
-    if !cargo_toml_path.exists() {
-        debug!(
-            "Skipping location: {} (no Cargo.toml found)",
-            path.display()
-        );
-        return Ok(());
-    }
-
-    let contents = fs::read_to_string(cargo_toml_path)?;
-
-    let parsed: toml::Value = contents.parse()?;
-    if let Some(workspace) = parsed.get("workspace") {
-        if let Some(members) = workspace.get("members").and_then(|m| m.as_array()) {
-            for member in members {
-                if let Some(member_path) = member.as_str() {
-                    let path = path.join(member_path);
-
-                    let pattern_str = path.to_string_lossy();
-
-                    for entry in glob::glob(&pattern_str)? {
-                        let entry = entry?;
-
-                        gather_crate_info_from_location(&entry, crates)?;
-                    }
-                }
-            }
-        }
-    } else if let Some(crate_name) = parsed
-        .get("package")
-        .and_then(|pkg| pkg.get("name"))
-        .and_then(|name| name.as_str())
-    {
-        trace!("Found crate ({}): {}", crate_name, path.display());
-
-        crates.insert(crate_name.to_string(), path.join("target/debug/"));
-    }
-
-    Ok(())
 }
 
 fn determine_commands_for_window(
@@ -489,13 +425,10 @@ mod tests {
 
     use anyhow::Result;
     use config::Command as ConfigCommand;
-    use insta::{assert_debug_snapshot, assert_snapshot};
+    use insta::assert_debug_snapshot;
     use rand::{distributions::Alphanumeric, Rng};
     use tempfile::tempdir;
-    use test_utils::{
-        create_workspace_with_packages, setup_test_environment, setup_tracing,
-        stabilize_home_paths, FakeBin, FakePackage,
-    };
+    use test_utils::{create_workspace_with_packages, setup_tracing, FakeBin, FakePackage};
 
     use crate::build_utils::generate_symlinks;
 
@@ -1144,104 +1077,6 @@ mod tests {
             "tmux -L [SOCKET_NAME] new-session -d -s foo -n bar",
             "tmux attach",
         ]
-        "###);
-
-        Ok(())
-    }
-
-    #[test]
-    fn gather_crate_locations_with_tilde() -> Result<()> {
-        let env = setup_test_environment();
-
-        let workspace_dir = env.home.join("workspace");
-        create_workspace_with_packages(
-            workspace_dir.as_path(),
-            vec![
-                FakePackage {
-                    name: "foo".to_string(),
-                    bins: vec![],
-                },
-                FakePackage {
-                    name: "bar".to_string(),
-                    bins: vec![],
-                },
-                FakePackage {
-                    name: "baz".to_string(),
-                    bins: vec![],
-                },
-            ],
-        );
-
-        let config = Config {
-            crate_locations: Some(vec![String::from("~/workspace")]),
-            tmux: None,
-            shell_caching: None,
-        };
-
-        let crates = gather_crate_locations(&config)?;
-        let debug_output = format!("{:#?}", crates);
-        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
-        {
-            "bar": "~/workspace/bar/target/debug/",
-            "baz": "~/workspace/baz/target/debug/",
-            "foo": "~/workspace/foo/target/debug/",
-        }
-        "###);
-
-        Ok(())
-    }
-
-    #[test]
-    fn gather_crate_locations_with_workspace_globs() -> Result<()> {
-        let env = setup_test_environment();
-
-        let workspace_dir = env.home.join("workspace");
-        create_workspace_with_packages(
-            workspace_dir.as_path(),
-            vec![FakePackage {
-                name: "foo".to_string(),
-                bins: vec![],
-            }],
-        );
-
-        test_utils::create_crate(
-            &workspace_dir.join("crates/bar"),
-            FakePackage {
-                name: "bar".to_string(),
-                bins: vec![],
-            },
-        );
-
-        test_utils::create_crate(
-            &workspace_dir.join("crates/baz"),
-            FakePackage {
-                name: "baz".to_string(),
-                bins: vec![],
-            },
-        );
-
-        fs::write(
-            workspace_dir.join("Cargo.toml"),
-            r###"
-        [workspace]
-        members = ["foo", "crates/*"]
-        "###,
-        )?;
-
-        let config = Config {
-            crate_locations: Some(vec![String::from("~/workspace")]),
-            tmux: None,
-            shell_caching: None,
-        };
-
-        let crates = gather_crate_locations(&config)?;
-        let debug_output = format!("{:#?}", crates);
-        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
-        {
-            "bar": "~/workspace/crates/bar/target/debug/",
-            "baz": "~/workspace/crates/baz/target/debug/",
-            "foo": "~/workspace/foo/target/debug/",
-        }
         "###);
 
         Ok(())

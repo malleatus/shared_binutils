@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -175,6 +176,68 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
     lua_config_utils::read_config(&config_path)
 }
 
+pub fn gather_crate_locations(config: &Config) -> Result<BTreeMap<String, PathBuf>> {
+    debug!("Gathering crate locations");
+
+    let mut crates = BTreeMap::new();
+    if let Some(crate_locations) = &config.crate_locations {
+        for location in crate_locations {
+            trace!("Processing location: {}", location);
+
+            let location = shellexpand::tilde(&location).to_string();
+            gather_crate_info_from_location(Path::new(&location), &mut crates)?;
+        }
+    }
+
+    Ok(crates)
+}
+
+fn gather_crate_info_from_location(
+    path: &Path,
+    crates: &mut BTreeMap<String, PathBuf>,
+) -> Result<()> {
+    let cargo_toml_path = path.join("Cargo.toml");
+
+    if !cargo_toml_path.exists() {
+        debug!(
+            "Skipping location: {} (no Cargo.toml found)",
+            path.display()
+        );
+        return Ok(());
+    }
+
+    let contents = fs::read_to_string(cargo_toml_path)?;
+
+    let parsed: toml::Value = contents.parse()?;
+    if let Some(workspace) = parsed.get("workspace") {
+        if let Some(members) = workspace.get("members").and_then(|m| m.as_array()) {
+            for member in members {
+                if let Some(member_path) = member.as_str() {
+                    let path = path.join(member_path);
+
+                    let pattern_str = path.to_string_lossy();
+
+                    for entry in glob::glob(&pattern_str)? {
+                        let entry = entry?;
+
+                        gather_crate_info_from_location(&entry, crates)?;
+                    }
+                }
+            }
+        }
+    } else if let Some(crate_name) = parsed
+        .get("package")
+        .and_then(|pkg| pkg.get("name"))
+        .and_then(|name| name.as_str())
+    {
+        trace!("Found crate ({}): {}", crate_name, path.display());
+
+        crates.insert(crate_name.to_string(), path.join("target/debug/"));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,6 +245,7 @@ mod tests {
     use std::env;
     use std::fs;
     use tempfile::tempdir;
+    use test_utils::{create_workspace_with_packages, FakePackage};
     use test_utils::{setup_test_environment, stabilize_home_paths};
 
     #[test]
@@ -607,5 +671,103 @@ mod tests {
         };
 
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn gather_crate_locations_with_tilde() -> Result<()> {
+        let env = setup_test_environment();
+
+        let workspace_dir = env.home.join("workspace");
+        create_workspace_with_packages(
+            workspace_dir.as_path(),
+            vec![
+                FakePackage {
+                    name: "foo".to_string(),
+                    bins: vec![],
+                },
+                FakePackage {
+                    name: "bar".to_string(),
+                    bins: vec![],
+                },
+                FakePackage {
+                    name: "baz".to_string(),
+                    bins: vec![],
+                },
+            ],
+        );
+
+        let config = Config {
+            crate_locations: Some(vec![String::from("~/workspace")]),
+            tmux: None,
+            shell_caching: None,
+        };
+
+        let crates = gather_crate_locations(&config)?;
+        let debug_output = format!("{:#?}", crates);
+        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
+        {
+            "bar": "~/workspace/bar/target/debug/",
+            "baz": "~/workspace/baz/target/debug/",
+            "foo": "~/workspace/foo/target/debug/",
+        }
+        "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn gather_crate_locations_with_workspace_globs() -> Result<()> {
+        let env = setup_test_environment();
+
+        let workspace_dir = env.home.join("workspace");
+        create_workspace_with_packages(
+            workspace_dir.as_path(),
+            vec![FakePackage {
+                name: "foo".to_string(),
+                bins: vec![],
+            }],
+        );
+
+        test_utils::create_crate(
+            &workspace_dir.join("crates/bar"),
+            FakePackage {
+                name: "bar".to_string(),
+                bins: vec![],
+            },
+        );
+
+        test_utils::create_crate(
+            &workspace_dir.join("crates/baz"),
+            FakePackage {
+                name: "baz".to_string(),
+                bins: vec![],
+            },
+        );
+
+        fs::write(
+            workspace_dir.join("Cargo.toml"),
+            r###"
+        [workspace]
+        members = ["foo", "crates/*"]
+        "###,
+        )?;
+
+        let config = Config {
+            crate_locations: Some(vec![String::from("~/workspace")]),
+            tmux: None,
+            shell_caching: None,
+        };
+
+        let crates = gather_crate_locations(&config)?;
+        let debug_output = format!("{:#?}", crates);
+        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
+        {
+            "bar": "~/workspace/crates/bar/target/debug/",
+            "baz": "~/workspace/crates/baz/target/debug/",
+            "foo": "~/workspace/foo/target/debug/",
+        }
+        "###);
+
+        Ok(())
     }
 }
