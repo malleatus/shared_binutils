@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use config::{read_config, Config};
 use std::path::PathBuf;
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
@@ -12,11 +13,19 @@ struct Args {
     workspace_paths: Option<Vec<PathBuf>>,
 }
 
-fn get_workspace_paths(arg_values: Vec<String>) -> Result<Vec<PathBuf>> {
+fn get_workspace_paths(arg_values: Vec<String>, config: &Config) -> Result<Vec<PathBuf>> {
     let args = Args::parse_from(arg_values);
 
     let workspace_paths = if let Some(workspace_paths) = args.workspace_paths {
         workspace_paths
+    } else if let Some(crate_locations) = &config.crate_locations {
+        crate_locations
+            .iter()
+            .map(|location| {
+                let expanded = shellexpand::tilde(&location);
+                PathBuf::from(expanded.into_owned())
+            })
+            .collect()
     } else {
         vec![std::env::current_dir()?]
     };
@@ -34,7 +43,9 @@ fn main() -> Result<()> {
 
     latest_bin::ensure_latest_bin()?;
 
-    for workspace_path in get_workspace_paths(std::env::args().collect())? {
+    let config = read_config(None)?;
+
+    for workspace_path in get_workspace_paths(std::env::args().collect(), &config)? {
         debug!("Processing workspace_root: {}", workspace_path.display());
         global::build_utils::generate_symlinks(Some(workspace_path))?;
     }
@@ -45,13 +56,23 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::assert_debug_snapshot;
+    use config::Config;
+    use insta::{assert_debug_snapshot, assert_snapshot};
+    use test_utils::{
+        create_workspace_with_packages, setup_test_environment, stabilize_home_paths, FakePackage,
+    };
 
     #[test]
-    fn test_workspace_paths_empty() -> Result<()> {
+    fn test_workspace_paths_no_args_no_config() -> Result<()> {
+        let config = Config {
+            crate_locations: None,
+            tmux: None,
+            shell_caching: None,
+        };
+
         // Test when no paths are provided (expect default path).
-        let paths = vec!["generate-binutils-symlinks".to_string()];
-        let result = get_workspace_paths(paths).unwrap();
+        let args = vec!["generate-binutils-symlinks".to_string()];
+        let result = get_workspace_paths(args, &config).unwrap();
 
         assert_eq!(result, vec![std::env::current_dir()?]);
 
@@ -59,21 +80,70 @@ mod tests {
     }
 
     #[test]
-    fn test_workspace_paths_with_values() {
+    fn test_workspace_paths_with_args_no_config() {
+        let config = Config {
+            crate_locations: None,
+            tmux: None,
+            shell_caching: None,
+        };
+
         // Test when multiple paths are provided.
-        let paths = vec![
+        let args = vec![
             "generate-binutils-symlinks".to_string(),
             "--workspace-path".to_string(),
             "/path/to/workspace1".to_string(),
             "--workspace-path".to_string(),
             "/path/to/workspace2".to_string(),
         ];
-        let result = get_workspace_paths(paths).unwrap();
+        let result = get_workspace_paths(args, &config).unwrap();
         assert_debug_snapshot!(result, @r###"
     [
         "/path/to/workspace1",
         "/path/to/workspace2",
     ]
     "###);
+    }
+
+    #[test]
+    fn test_workspace_paths_empty_args_with_config() -> Result<()> {
+        let env = setup_test_environment();
+
+        let workspace_dir = env.home.join("workspace");
+        create_workspace_with_packages(
+            workspace_dir.as_path(),
+            vec![
+                FakePackage {
+                    name: "foo".to_string(),
+                    bins: vec![],
+                },
+                FakePackage {
+                    name: "bar".to_string(),
+                    bins: vec![],
+                },
+                FakePackage {
+                    name: "baz".to_string(),
+                    bins: vec![],
+                },
+            ],
+        );
+
+        let config = Config {
+            crate_locations: Some(vec![String::from("~/workspace")]),
+            tmux: None,
+            shell_caching: None,
+        };
+
+        let args = vec!["generate-binutils-symlinks".to_string()];
+
+        let result = get_workspace_paths(args, &config).unwrap();
+        let debug_output = format!("{:#?}", result);
+
+        assert_snapshot!(stabilize_home_paths(&env, &debug_output), @r###"
+        [
+            "~/workspace",
+        ]
+        "###);
+
+        Ok(())
     }
 }
