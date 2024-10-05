@@ -508,6 +508,7 @@ dependencies = [
  "fixturify",
  "insta",
  "latest_bin",
+ "lua_config_utils",
  "mockito",
  "pretty_assertions",
  "rand",
