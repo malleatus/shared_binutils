@@ -49,7 +49,12 @@ fixturify = { path = "fixturify" }
 lua_config_utils = { path = "lua_config_utils" }
 cargo_metadata = "0.18.1"
 ignore = "0.4.23"
-mlua = { version = "0.9.9", features = ["lua54", "vendored", "serialize"] }
+mlua = { version = "0.10.1", features = [
+  "lua54",
+  "vendored",
+  "serialize",
+  "anyhow",
+] }
 regex = "1.11.1"
 schemars = "0.8.21"
 serde = { version = "1.0.214", features = ["derive"] }
