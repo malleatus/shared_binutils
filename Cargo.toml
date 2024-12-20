@@ -47,7 +47,7 @@ latest_bin = { path = "latest_bin" }
 test_utils = { path = "test_utils" }
 fixturify = { path = "fixturify" }
 lua_config_utils = { path = "lua_config_utils" }
-cargo_metadata = "0.18.1"
+cargo_metadata = "0.19.1"
 ignore = "0.4.23"
 mlua = { version = "0.10.1", features = [
   "lua54",
