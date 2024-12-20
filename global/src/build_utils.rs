@@ -42,7 +42,7 @@ fn process_package(package: &Package, profile: &str, workspace_target_dir: &Path
     })?;
 
     for target in package.targets.iter() {
-        if target.kind.contains(&"bin".to_string()) {
+        if target.kind.contains(&cargo_metadata::TargetKind::Bin) {
             let source_path = workspace_target_dir.join(&target.name);
             let dest_path = crate_target_dir.join(&target.name);
 
