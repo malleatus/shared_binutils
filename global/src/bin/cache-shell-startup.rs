@@ -253,7 +253,7 @@ fn run(args: Vec<String>) -> Result<()> {
     process_directory(source_dir, temp_dest_dir, dest_dir)
         .context("Failed to process directory")?;
 
-    if args.destination_strategy == DestinationStrategy::Clear {
+    if args.destination_strategy == DestinationStrategy::Clear && dest_dir.exists() {
         info!("Clearing destination directory");
         fs::remove_dir_all(dest_dir).context("Failed to clear destination directory")?;
     }
@@ -704,6 +704,34 @@ mod tests {
             "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
         }
         "###)
+    }
+
+    #[test]
+    fn test_run_with_nonexistent_destination() {
+        let env = setup_test_environment();
+
+        let source_files: BTreeMap<String, String> = BTreeMap::from([(
+            "src/rwjblue/dotfiles/zsh/zshrc".to_string(),
+            "# CMD: echo 'hello world'\n".to_string(),
+        )]);
+
+        fixturify::write(&env.home, &source_files).unwrap();
+
+        run(vec![
+            "cache-shell-setup".to_string(),
+            "--source=~/src/rwjblue/dotfiles/zsh".to_string(),
+            "--destination=~/src/rwjblue/dotfiles/nonexistent/dist".to_string(),
+        ])
+        .unwrap();
+
+        let file_map = fixturify::read(&env.home).unwrap();
+
+        assert_debug_snapshot!(file_map, @r###"
+        {
+            "src/rwjblue/dotfiles/nonexistent/dist/zshrc": "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nhello world\n\n# OUTPUT END: echo 'hello world'\n",
+            "src/rwjblue/dotfiles/zsh/zshrc": "# CMD: echo 'hello world'\n",
+        }
+        "###);
     }
 
     #[test]
