@@ -29,7 +29,7 @@ insta.opt-level = 3
 similar.opt-level = 3
 
 [workspace.dependencies]
-anyhow = "1.0.93"
+anyhow = "1.0.95"
 clap = { version = "4.5.21", features = ["derive"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
