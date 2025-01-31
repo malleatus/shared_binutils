@@ -743,12 +743,19 @@ mod tests {
                 bins: vec![],
             },
         );
+        test_utils::create_crate(
+            &workspace_dir.join("local-crates/derp"),
+            FakePackage {
+                name: "derp".to_string(),
+                bins: vec![],
+            },
+        );
 
         fs::write(
             workspace_dir.join("Cargo.toml"),
             r###"
         [workspace]
-        members = ["foo", "crates/*"]
+        members = ["foo", "*crates/*"]
         "###,
         )?;
 
@@ -764,6 +771,7 @@ mod tests {
         {
             "bar": "~/workspace/crates/bar/target/debug/",
             "baz": "~/workspace/crates/baz/target/debug/",
+            "derp": "~/workspace/local-crates/derp/target/debug/",
             "foo": "~/workspace/foo/target/debug/",
         }
         "###);
