@@ -43,7 +43,10 @@ fn ensure_directory_structure(base_path: &Path, dry_run: bool) -> Result<()> {
 
     let paths = [
         "crates/.gitkeep",
-        "nvim/config/lua/local_config/.gitkeep",
+        "nvim/config/lua/local_config/config/autocmds.lua",
+        "nvim/config/lua/local_config/config/options.lua",
+        "nvim/config/lua/local_config/config/keymaps.lua",
+        "nvim/config/lua/local_config/plugins/.gitkeep",
         "nvim/config/snippets/.gitkeep",
     ];
 
@@ -390,9 +393,6 @@ mod tests {
         assert!(base_path.exists());
         assert!(base_path.join(".git").exists());
         assert!(base_path.join("crates/.gitkeep").exists());
-        assert!(base_path
-            .join("nvim/config/lua/local_config/.gitkeep")
-            .exists());
         assert!(base_path.join("nvim/config/snippets/.gitkeep").exists());
 
         assert!(local_crates_path.exists());
@@ -414,7 +414,10 @@ mod tests {
         assert_debug_snapshot!(result, @r###"
         {
             "crates/.gitkeep": "",
-            "nvim/config/lua/local_config/.gitkeep": "",
+            "nvim/config/lua/local_config/config/autocmds.lua": "",
+            "nvim/config/lua/local_config/config/keymaps.lua": "",
+            "nvim/config/lua/local_config/config/options.lua": "",
+            "nvim/config/lua/local_config/plugins/.gitkeep": "",
             "nvim/config/snippets/.gitkeep": "",
         }
         "###);
@@ -518,6 +521,10 @@ mod tests {
         {
             "crates/.gitkeep": "",
             "nvim/config/lua/local_config/.gitkeep": "",
+            "nvim/config/lua/local_config/config/autocmds.lua": "",
+            "nvim/config/lua/local_config/config/keymaps.lua": "",
+            "nvim/config/lua/local_config/config/options.lua": "",
+            "nvim/config/lua/local_config/plugins/.gitkeep": "",
             "nvim/config/snippets/.gitkeep": "",
         }
         "###);
@@ -540,7 +547,10 @@ mod tests {
         assert_debug_snapshot!(result, @r###"
         {
             "crates/.gitkeep": "",
-            "nvim/config/lua/local_config/.gitkeep": "",
+            "nvim/config/lua/local_config/config/autocmds.lua": "",
+            "nvim/config/lua/local_config/config/keymaps.lua": "",
+            "nvim/config/lua/local_config/config/options.lua": "",
+            "nvim/config/lua/local_config/plugins/.gitkeep": "",
             "nvim/config/snippets/.gitkeep": "",
         }
         "###);
@@ -572,8 +582,11 @@ mod tests {
         {
             "crates/.gitkeep": "",
             "crates/existing-crate/Cargo.toml": "[package]",
-            "nvim/config/lua/local_config/.gitkeep": "",
+            "nvim/config/lua/local_config/config/autocmds.lua": "",
+            "nvim/config/lua/local_config/config/keymaps.lua": "",
+            "nvim/config/lua/local_config/config/options.lua": "",
             "nvim/config/lua/local_config/init.lua": "-- Config",
+            "nvim/config/lua/local_config/plugins/.gitkeep": "",
             "nvim/config/snippets/.gitkeep": "",
         }
         "###);
