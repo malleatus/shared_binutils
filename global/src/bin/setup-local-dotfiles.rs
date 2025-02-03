@@ -59,10 +59,14 @@ fn ensure_directory_structure(base_path: &Path, dry_run: bool) -> Result<()> {
                 .with_context(|| format!("Failed to create directory: {}", file))?;
         }
 
-        debug!("Creating .gitkeep file: {}", path.display());
-        if !dry_run {
-            fs::write(&path, "")
-                .with_context(|| format!("Failed to create: {}", path.display()))?;
+        if !path.exists() {
+            debug!("Creating file: {}", path.display());
+            if !dry_run {
+                fs::write(&path, "")
+                    .with_context(|| format!("Failed to create: {}", path.display()))?;
+            }
+        } else {
+            debug!("File already exists, skipping: {}", path.display());
         }
     }
 
@@ -254,7 +258,7 @@ fn run(args: Vec<String>) -> Result<()> {
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
         )
         .init();
 
@@ -614,6 +618,30 @@ mod tests {
                 "Target path exists but is not a symlink: {}",
                 local_crates_path.display()
             )
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ensure_directory_structure_preserves_contents() -> Result<()> {
+        let env = setup_test_environment();
+        let base_path = env.home.join("local-dotfiles");
+
+        let autocmds_content = r#"-- Neovim autocmds configuration"#;
+
+        let source_files: BTreeMap<String, String> = BTreeMap::from([(
+            "nvim/config/lua/local_config/config/autocmds.lua".to_string(),
+            autocmds_content.to_string(),
+        )]);
+        fixturify::write(&base_path, &source_files)?;
+
+        ensure_directory_structure(&base_path, false)?;
+
+        let result = fixturify::read(&base_path)?;
+        assert_eq!(
+            result.get("nvim/config/lua/local_config/config/autocmds.lua"),
+            Some(&autocmds_content.to_string())
         );
 
         Ok(())
