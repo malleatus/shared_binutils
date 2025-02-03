@@ -231,6 +231,12 @@ fn ensure_window(
             commands_executed.push(run_command(cmd, options)?);
             commands_executed.extend(execute_command(session_name, window, crates, options)?);
 
+            trace!(
+                "Attempting to insert window '{}' at index {} into vector of length {}",
+                window.name,
+                *window_index,
+                windows.len()
+            );
             windows.insert(*window_index, window.name.to_string());
         }
     } else {
