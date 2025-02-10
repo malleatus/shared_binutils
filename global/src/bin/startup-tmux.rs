@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use config::read_config;
 use global::tmux::{startup_tmux, TmuxOptions};
+use tracing::debug;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -65,6 +66,7 @@ fn main() -> Result<()> {
 
     let options = CliTmuxOptions::parse();
     let config = read_config(options.config_file())?;
+    debug!("Using config: \n{:#?}", config);
 
     let commands = startup_tmux(&config, &options)?;
 

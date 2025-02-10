@@ -87,6 +87,60 @@ pub struct Window {
     pub linked_crates: Option<Vec<String>>,
 }
 
+#[derive(Debug)]
+struct ValidationError {
+    issues: Vec<String>,
+    config_path: Option<PathBuf>,
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Configuration validation failed")?;
+        if let Some(path) = &self.config_path {
+            writeln!(f, "Config file: {}", path.display())?;
+        }
+        writeln!(f, "\nIssues found:")?;
+        for issue in &self.issues {
+            writeln!(f, "- {}", issue)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ValidationError {}
+
+impl Config {
+    pub fn validate(&self, config_path: Option<&Path>) -> Result<()> {
+        let mut issues = Vec::new();
+
+        if let Some(tmux) = &self.tmux {
+            for session in &tmux.sessions {
+                let mut seen_windows = BTreeMap::new();
+
+                for (index, window) in session.windows.iter().enumerate() {
+                    if let Some(previous_index) = seen_windows.get(&window.name) {
+                        issues.push(format!(
+                            "Duplicate window name '{}' found in session '{}' at indices {} and {}",
+                            window.name, session.name, previous_index, index
+                        ));
+                    }
+                    seen_windows.insert(window.name.clone(), index);
+                }
+            }
+        }
+
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(ValidationError {
+                issues,
+                config_path: config_path.map(|p| p.to_path_buf()),
+            }
+            .into())
+        }
+    }
+}
+
 fn path_to_string<S>(path: &Option<PathBuf>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -173,7 +227,10 @@ pub fn read_config(config_path: Option<PathBuf>) -> Result<Config> {
         });
     }
 
-    lua_config_utils::read_config(&config_path)
+    let config: Config = lua_config_utils::read_config(&config_path)?;
+    config.validate(Some(&config_path))?;
+
+    Ok(config)
 }
 
 pub fn gather_crate_locations(config: &Config) -> Result<BTreeMap<String, PathBuf>> {
@@ -408,6 +465,45 @@ mod tests {
             shell_caching: None,
             crate_locations: None,
         }
+        "###);
+    }
+
+    #[test]
+    fn test_read_config_with_duplicate_window_names() {
+        let env = setup_test_environment();
+
+        let config_str = r###"
+    return {
+        tmux = {
+            sessions = {
+                {
+                    name = "Test Session",
+                    windows = {
+                        {
+                            name = "dotvim",
+                            path = "~/some/path",
+                            command = "nvim"
+                        },
+                        {
+                            name = "dotvim",
+                            path = "~/other/path",
+                            command = "nvim"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    "###;
+        fs::write(&env.config_file, config_str).unwrap();
+
+        let err = read_config(None).unwrap_err();
+        assert_snapshot!(stabilize_home_paths(&env, &err.to_string()), @r###"
+        Configuration validation failed
+        Config file: ~/.config/binutils/config.lua
+
+        Issues found:
+        - Duplicate window name 'dotvim' found in session 'Test Session' at indices 0 and 1
         "###);
     }
 
@@ -777,5 +873,78 @@ mod tests {
         "###);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_config_validation_duplicate_window_names() {
+        let config = Config {
+            tmux: Some(Tmux {
+                sessions: vec![Session {
+                    name: "test".to_string(),
+                    windows: vec![
+                        Window {
+                            name: "dotvim".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                        Window {
+                            name: "dotvim".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                    ],
+                }],
+                default_session: None,
+            }),
+            shell_caching: None,
+            crate_locations: None,
+        };
+
+        let config_path = Path::new("some/file/test.lua");
+        let err = config.validate(Some(config_path)).unwrap_err();
+        assert_snapshot!(err.to_string(), @r###"
+        Configuration validation failed
+        Config file: some/file/test.lua
+
+        Issues found:
+        - Duplicate window name 'dotvim' found in session 'test' at indices 0 and 1
+        "###);
+    }
+
+    #[test]
+    fn test_config_validation_unique_window_names() {
+        let config = Config {
+            tmux: Some(Tmux {
+                sessions: vec![Session {
+                    name: "test".to_string(),
+                    windows: vec![
+                        Window {
+                            name: "window1".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                        Window {
+                            name: "window2".to_string(),
+                            path: None,
+                            command: None,
+                            env: None,
+                            linked_crates: None,
+                        },
+                    ],
+                }],
+                default_session: None,
+            }),
+            shell_caching: None,
+            crate_locations: None,
+        };
+
+        let config_path = Path::new("some/file/test.lua");
+        assert!(config.validate(Some(config_path)).is_ok());
     }
 }
