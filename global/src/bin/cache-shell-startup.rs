@@ -82,7 +82,8 @@ fn handle_fetch(url: String) -> Result<Vec<String>> {
 
     if response.status() == 200 {
         let content = response
-            .into_string()
+            .into_body()
+            .read_to_string()
             .context("Failed to read response content")?;
         result.push(format!(
             "# FETCHED CONTENT START: {}\n{}\n# FETCHED CONTENT END: {}",
@@ -92,7 +93,8 @@ fn handle_fetch(url: String) -> Result<Vec<String>> {
     } else {
         let status = response.status();
         let error_body = response
-            .into_string()
+            .into_body()
+            .read_to_string()
             .unwrap_or_else(|_| "Failed to read error response body".to_string());
         anyhow::bail!(
             "Failed to fetch URL '{}' (Status Code: {}):\nError Body: {}",
@@ -805,7 +807,7 @@ mod tests {
         let result = process_file(&source_file, &dest_file);
 
         let err = result.unwrap_err();
-        assert_snapshot!(replace_server_addr(format!("{:#}", err), &server_url), @"Failed to fetch URL: {server_url}/test: {server_url}/test: status code 500");
+        assert_snapshot!(replace_server_addr(format!("{:#}", err), &server_url), @"Failed to fetch URL: {server_url}/test: http status: 500");
 
         mock.assert();
 

@@ -432,7 +432,7 @@ mod tests {
     use anyhow::Result;
     use config::Command as ConfigCommand;
     use insta::assert_debug_snapshot;
-    use rand::{distributions::Alphanumeric, Rng};
+    use rand::{distr::Alphanumeric, Rng};
     use tempfile::tempdir;
     use test_utils::{create_workspace_with_packages, setup_tracing, FakeBin, FakePackage};
 
@@ -482,7 +482,7 @@ mod tests {
     }
 
     fn generate_socket_name() -> String {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let socket_name: String = rng
             .sample_iter(&Alphanumeric)
             .take(30)

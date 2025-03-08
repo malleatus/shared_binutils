@@ -29,17 +29,17 @@ insta.opt-level = 3
 similar.opt-level = 3
 
 [workspace.dependencies]
-anyhow = "1.0.95"
-clap = { version = "4.5.21", features = ["derive"] }
+anyhow = "1.0.97"
+clap = { version = "4.5.31", features = ["derive"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 walkdir = "2.5.0"
 
-insta = { version = "1.41.1", features = ["yaml", "toml"] }
-tempfile = "3.14.0"
+insta = { version = "1.42.2", features = ["yaml", "toml"] }
+tempfile = "3.18.0"
 temp-env = "0.3.6"
-rand = "0.8.5"
-mockito = "1.5.0"
+rand = "0.9.0"
+mockito = "1.7.0"
 pretty_assertions = "1.4.1"
 
 config = { path = "config" }
@@ -47,20 +47,20 @@ latest_bin = { path = "latest_bin" }
 test_utils = { path = "test_utils" }
 fixturify = { path = "fixturify" }
 lua_config_utils = { path = "lua_config_utils" }
-cargo_metadata = "0.19.1"
+cargo_metadata = "0.19.2"
 ignore = "0.4.23"
-mlua = { version = "0.10.1", features = [
+mlua = { version = "0.10.3", features = [
   "lua54",
   "vendored",
   "serialize",
   "anyhow",
 ] }
 regex = "1.11.1"
-schemars = "0.8.21"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.134"
+schemars = "0.8.22"
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.140"
 shellexpand = "3.1.0"
 syn = { version = "2.0", features = ["full"] }
-toml = "0.8.19"
-ureq = "2.11.0"
+toml = "0.8.20"
+ureq = "3.0.8"
 glob = "0.3.2"
