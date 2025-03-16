@@ -162,55 +162,49 @@ fn setup_symlinks(base_path: &Path, local_crates_path: &Path, dry_run: bool) -> 
         }
     }
 
-    if local_crates_path.exists() {
-        if local_crates_path.is_symlink() {
-            debug!(
-                "Removing existing crates symlink: {}",
-                local_crates_path.display()
-            );
-            if !dry_run {
-                fs::remove_file(local_crates_path)?;
-            }
-        } else {
-            anyhow::bail!(
-                "Target path exists but is not a symlink: {}",
-                local_crates_path.display()
-            );
+    if local_crates_path.is_symlink() {
+        debug!(
+            "Removing existing crates symlink: {}",
+            local_crates_path.display()
+        );
+        if !dry_run {
+            fs::remove_file(local_crates_path)?;
         }
+    } else if local_crates_path.exists() {
+        anyhow::bail!(
+            "Target path exists but is not a symlink: {}",
+            local_crates_path.display()
+        );
     }
 
-    if nvim_config_path.exists() {
-        if nvim_config_path.is_symlink() {
-            debug!(
-                "Removing existing nvim config symlink: {}",
-                nvim_config_path.display()
-            );
-            if !dry_run {
-                fs::remove_file(&nvim_config_path)?;
-            }
-        } else {
-            anyhow::bail!(
-                "Target path exists but is not a symlink: {}",
-                nvim_config_path.display()
-            );
+    if nvim_config_path.is_symlink() {
+        debug!(
+            "Removing existing nvim config symlink: {}",
+            nvim_config_path.display()
+        );
+        if !dry_run {
+            fs::remove_file(&nvim_config_path)?;
         }
+    } else if nvim_config_path.exists() {
+        anyhow::bail!(
+            "Target path exists but is not a symlink: {}",
+            nvim_config_path.display()
+        );
     }
 
-    if binutils_local_config_path.exists() {
-        if binutils_local_config_path.is_symlink() {
-            debug!(
-                "Removing existing nvim config symlink: {}",
-                binutils_local_config_path.display()
-            );
-            if !dry_run {
-                fs::remove_file(&binutils_local_config_path)?;
-            }
-        } else {
-            anyhow::bail!(
-                "Target path exists but is not a symlink: {}",
-                binutils_local_config_path.display()
-            );
+    if binutils_local_config_path.is_symlink() {
+        debug!(
+            "Removing existing nvim config symlink: {}",
+            binutils_local_config_path.display()
+        );
+        if !dry_run {
+            fs::remove_file(&binutils_local_config_path)?;
         }
+    } else if binutils_local_config_path.exists() {
+        anyhow::bail!(
+            "Target path exists but is not a symlink: {}",
+            binutils_local_config_path.display()
+        );
     }
 
     debug!(
@@ -671,6 +665,33 @@ mod tests {
                 "Target path exists but is not a symlink: {}",
                 local_crates_path.display()
             )
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_symlinks_handles_broken_symlinks() -> Result<()> {
+        let env = setup_test_environment();
+        let base_path = env.home.join("local-dotfiles");
+        let local_crates_path = env.home.join("src/rwjblue/dotfiles/binutils/local-crates");
+        let nvim_config_path = env.home.join(".config/nvim/lua/local_config");
+
+        fs::create_dir_all(nvim_config_path.parent().unwrap())?;
+
+        // make a broken symlink, intentionally
+        std::os::unix::fs::symlink(Path::new("/tmp/invalid"), nvim_config_path)
+            .with_context(|| "Failed to create broken symlink for test")?;
+
+        ensure_directory_structure(&base_path, false)?;
+        setup_symlinks(&base_path, &local_crates_path, false)?;
+
+        let nvim_config_path = env.home.join(".config/nvim/lua/local_config");
+        assert!(nvim_config_path.exists());
+        assert!(nvim_config_path.is_symlink());
+        assert_eq!(
+            fs::read_link(&nvim_config_path)?,
+            base_path.join("nvim/lua/local_config")
         );
 
         Ok(())
