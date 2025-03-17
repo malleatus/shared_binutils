@@ -15,7 +15,7 @@ use tracing_subscriber::EnvFilter;
 /// - Optionally clones a git repository as the base
 /// - Sets up symlinks for:
 ///   - Local crates directory (~/src/rwjblue/dotfiles/binutils/local-crates -> local-dotfiles/crates)
-///   - Neovim local config (~/.config/nvim/lua/local_config -> local-dotfiles/nvim/lua/local_config)
+///   - Neovim local config (~/.config/nvim/lua/local_nvim -> local-dotfiles/nvim/lua)
 ///
 /// # Environment Variables:
 /// - HOME: Required for path expansion
@@ -48,10 +48,10 @@ fn ensure_directory_structure(base_path: &Path, dry_run: bool) -> Result<()> {
             "return require('config')",
         ),
         ("crates/.gitkeep", ""),
-        ("nvim/lua/local_config/config/autocmds.lua", ""),
-        ("nvim/lua/local_config/config/options.lua", ""),
-        ("nvim/lua/local_config/config/keymaps.lua", ""),
-        ("nvim/lua/local_config/plugins/.gitkeep", ""),
+        ("nvim/lua/config/autocmds.lua", ""),
+        ("nvim/lua/config/options.lua", ""),
+        ("nvim/lua/config/keymaps.lua", ""),
+        ("nvim/lua/plugins/.gitkeep", ""),
         ("nvim/snippets/.gitkeep", ""),
     ]);
 
@@ -145,10 +145,10 @@ fn setup_symlinks(base_path: &Path, local_crates_path: &Path, dry_run: bool) -> 
     }
 
     let home = std::env::var("HOME").context("HOME environment variable not set")?;
-    let nvim_config_path = PathBuf::from(&home).join(".config/nvim/lua/local_config");
+    let local_nvim_path = PathBuf::from(&home).join(".config/nvim/lua/local_nvim");
     let binutils_local_config_path = PathBuf::from(&home).join(".config/binutils/local.config.lua");
 
-    if let Some(parent) = nvim_config_path.parent() {
+    if let Some(parent) = local_nvim_path.parent() {
         debug!("Creating ~/.config/nvim path: {}", parent.display());
         if !dry_run {
             fs::create_dir_all(parent)?;
@@ -177,18 +177,18 @@ fn setup_symlinks(base_path: &Path, local_crates_path: &Path, dry_run: bool) -> 
         );
     }
 
-    if nvim_config_path.is_symlink() {
+    if local_nvim_path.is_symlink() {
         debug!(
             "Removing existing nvim config symlink: {}",
-            nvim_config_path.display()
+            local_nvim_path.display()
         );
         if !dry_run {
-            fs::remove_file(&nvim_config_path)?;
+            fs::remove_file(&local_nvim_path)?;
         }
-    } else if nvim_config_path.exists() {
+    } else if local_nvim_path.exists() {
         anyhow::bail!(
             "Target path exists but is not a symlink: {}",
-            nvim_config_path.display()
+            local_nvim_path.display()
         );
     }
 
@@ -225,12 +225,12 @@ fn setup_symlinks(base_path: &Path, local_crates_path: &Path, dry_run: bool) -> 
 
     debug!(
         "Creating nvim local lua config symlink: {} -> {}",
-        base_path.join("nvim/lua/local_config").display(),
-        nvim_config_path.display()
+        base_path.join("nvim/lua/local_nvim").display(),
+        local_nvim_path.display()
     );
     if !dry_run {
-        std::os::unix::fs::symlink(base_path.join("nvim/lua/local_config"), nvim_config_path)
-            .with_context(|| "Failed to create symlink for nvim local_config directory")?;
+        std::os::unix::fs::symlink(base_path.join("nvim/lua"), local_nvim_path)
+            .with_context(|| "Failed to create symlink for nvim local_nvim directory")?;
     }
 
     debug!(
@@ -425,7 +425,7 @@ mod tests {
 
         let base_path = env.home.join("src/workstuff/local-dotfiles");
         let local_crates_path = env.home.join("src/rwjblue/dotfiles/binutils/local-crates");
-        let nvim_config_lua_path = env.home.join(".config/nvim/lua/local_config");
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
         let binutils_local_config_path = env.home.join(".config/binutils/local.config.lua");
 
         assert!(base_path.exists());
@@ -435,8 +435,8 @@ mod tests {
 
         assert!(local_crates_path.exists());
         assert!(local_crates_path.is_symlink());
-        assert!(nvim_config_lua_path.exists());
-        assert!(nvim_config_lua_path.is_symlink());
+        assert!(local_nvim_path.exists());
+        assert!(local_nvim_path.is_symlink());
         assert!(binutils_local_config_path.exists());
         assert!(binutils_local_config_path.is_symlink());
 
@@ -455,10 +455,10 @@ mod tests {
         {
             "binutils-config/local.config.lua": "return require('config')",
             "crates/.gitkeep": "",
-            "nvim/lua/local_config/config/autocmds.lua": "",
-            "nvim/lua/local_config/config/keymaps.lua": "",
-            "nvim/lua/local_config/config/options.lua": "",
-            "nvim/lua/local_config/plugins/.gitkeep": "",
+            "nvim/lua/config/autocmds.lua": "",
+            "nvim/lua/config/keymaps.lua": "",
+            "nvim/lua/config/options.lua": "",
+            "nvim/lua/plugins/.gitkeep": "",
             "nvim/snippets/.gitkeep": "",
         }
         "###);
@@ -480,12 +480,12 @@ mod tests {
         assert!(local_crates_path.is_symlink());
         assert_eq!(fs::read_link(&local_crates_path)?, base_path.join("crates"));
 
-        let nvim_config_path = env.home.join(".config/nvim/lua/local_config");
-        assert!(nvim_config_path.exists());
-        assert!(nvim_config_path.is_symlink());
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
+        assert!(local_nvim_path.exists());
+        assert!(local_nvim_path.is_symlink());
         assert_eq!(
-            fs::read_link(&nvim_config_path)?,
-            base_path.join("nvim/lua/local_config")
+            fs::read_link(&local_nvim_path)?,
+            base_path.join("nvim/lua")
         );
 
         let binutils_local_config_path = env.home.join(".config/binutils/local.config.lua");
@@ -512,14 +512,14 @@ mod tests {
 
         let base_path = env.home.join("src/workstuff/local-dotfiles");
         let local_crates_path = env.home.join("src/rwjblue/dotfiles/binutils/local-crates");
-        let nvim_config_lua_path = env.home.join(".config/nvim/lua/local_config");
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
         let binutils_local_config_path = env.home.join(".config/binutils/local.config.lua");
 
         assert!(base_path.exists());
         assert!(local_crates_path.exists());
         assert!(local_crates_path.is_symlink());
-        assert!(nvim_config_lua_path.exists());
-        assert!(nvim_config_lua_path.is_symlink());
+        assert!(local_nvim_path.exists());
+        assert!(local_nvim_path.is_symlink());
         assert!(binutils_local_config_path.exists());
         assert!(binutils_local_config_path.is_symlink());
 
@@ -541,11 +541,11 @@ mod tests {
 
         let base_path = env.home.join("src/workstuff/local-dotfiles");
         let local_crates_path = env.home.join("src/rwjblue/dotfiles/binutils/local-crates");
-        let nvim_config_lua_path = env.home.join(".config/nvim/lua/local_config");
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
 
         assert!(!base_path.exists());
         assert!(!local_crates_path.exists());
-        assert!(!nvim_config_lua_path.exists());
+        assert!(!local_nvim_path.exists());
 
         Ok(())
     }
@@ -557,7 +557,7 @@ mod tests {
 
         let source_files: BTreeMap<String, String> = BTreeMap::from([
             ("crates/.gitkeep".to_string(), "".to_string()),
-            ("nvim/lua/local_config/.gitkeep".to_string(), "".to_string()),
+            ("nvim/lua/local_nvim/.gitkeep".to_string(), "".to_string()),
             ("nvim/snippets/.gitkeep".to_string(), "".to_string()),
         ]);
         fixturify::write(&base_path, &source_files)?;
@@ -569,11 +569,11 @@ mod tests {
         {
             "binutils-config/local.config.lua": "return require('config')",
             "crates/.gitkeep": "",
-            "nvim/lua/local_config/.gitkeep": "",
-            "nvim/lua/local_config/config/autocmds.lua": "",
-            "nvim/lua/local_config/config/keymaps.lua": "",
-            "nvim/lua/local_config/config/options.lua": "",
-            "nvim/lua/local_config/plugins/.gitkeep": "",
+            "nvim/lua/config/autocmds.lua": "",
+            "nvim/lua/config/keymaps.lua": "",
+            "nvim/lua/config/options.lua": "",
+            "nvim/lua/local_nvim/.gitkeep": "",
+            "nvim/lua/plugins/.gitkeep": "",
             "nvim/snippets/.gitkeep": "",
         }
         "###);
@@ -597,10 +597,10 @@ mod tests {
         {
             "binutils-config/local.config.lua": "return require('config')",
             "crates/.gitkeep": "",
-            "nvim/lua/local_config/config/autocmds.lua": "",
-            "nvim/lua/local_config/config/keymaps.lua": "",
-            "nvim/lua/local_config/config/options.lua": "",
-            "nvim/lua/local_config/plugins/.gitkeep": "",
+            "nvim/lua/config/autocmds.lua": "",
+            "nvim/lua/config/keymaps.lua": "",
+            "nvim/lua/config/options.lua": "",
+            "nvim/lua/plugins/.gitkeep": "",
             "nvim/snippets/.gitkeep": "",
         }
         "###);
@@ -619,7 +619,7 @@ mod tests {
                 "[package]".to_string(),
             ),
             (
-                "nvim/lua/local_config/init.lua".to_string(),
+                "nvim/lua/local_nvim/init.lua".to_string(),
                 "-- Config".to_string(),
             ),
         ]);
@@ -633,11 +633,11 @@ mod tests {
             "binutils-config/local.config.lua": "return require('config')",
             "crates/.gitkeep": "",
             "crates/existing-crate/Cargo.toml": "[package]",
-            "nvim/lua/local_config/config/autocmds.lua": "",
-            "nvim/lua/local_config/config/keymaps.lua": "",
-            "nvim/lua/local_config/config/options.lua": "",
-            "nvim/lua/local_config/init.lua": "-- Config",
-            "nvim/lua/local_config/plugins/.gitkeep": "",
+            "nvim/lua/config/autocmds.lua": "",
+            "nvim/lua/config/keymaps.lua": "",
+            "nvim/lua/config/options.lua": "",
+            "nvim/lua/local_nvim/init.lua": "-- Config",
+            "nvim/lua/plugins/.gitkeep": "",
             "nvim/snippets/.gitkeep": "",
         }
         "###);
@@ -675,23 +675,23 @@ mod tests {
         let env = setup_test_environment();
         let base_path = env.home.join("local-dotfiles");
         let local_crates_path = env.home.join("src/rwjblue/dotfiles/binutils/local-crates");
-        let nvim_config_path = env.home.join(".config/nvim/lua/local_config");
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
 
-        fs::create_dir_all(nvim_config_path.parent().unwrap())?;
+        fs::create_dir_all(local_nvim_path.parent().unwrap())?;
 
         // make a broken symlink, intentionally
-        std::os::unix::fs::symlink(Path::new("/tmp/invalid"), nvim_config_path)
+        std::os::unix::fs::symlink(Path::new("/tmp/invalid"), local_nvim_path)
             .with_context(|| "Failed to create broken symlink for test")?;
 
         ensure_directory_structure(&base_path, false)?;
         setup_symlinks(&base_path, &local_crates_path, false)?;
 
-        let nvim_config_path = env.home.join(".config/nvim/lua/local_config");
-        assert!(nvim_config_path.exists());
-        assert!(nvim_config_path.is_symlink());
+        let local_nvim_path = env.home.join(".config/nvim/lua/local_nvim");
+        assert!(local_nvim_path.exists());
+        assert!(local_nvim_path.is_symlink());
         assert_eq!(
-            fs::read_link(&nvim_config_path)?,
-            base_path.join("nvim/lua/local_config")
+            fs::read_link(&local_nvim_path)?,
+            base_path.join("nvim/lua")
         );
 
         Ok(())
@@ -705,7 +705,7 @@ mod tests {
         let autocmds_content = r#"-- Neovim autocmds configuration"#;
 
         let source_files: BTreeMap<String, String> = BTreeMap::from([(
-            "nvim/lua/local_config/config/autocmds.lua".to_string(),
+            "nvim/lua/local_nvim/config/autocmds.lua".to_string(),
             autocmds_content.to_string(),
         )]);
         fixturify::write(&base_path, &source_files)?;
@@ -714,7 +714,7 @@ mod tests {
 
         let result = fixturify::read(&base_path)?;
         assert_eq!(
-            result.get("nvim/lua/local_config/config/autocmds.lua"),
+            result.get("nvim/lua/local_nvim/config/autocmds.lua"),
             Some(&autocmds_content.to_string())
         );
 
