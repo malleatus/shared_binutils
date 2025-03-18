@@ -33,6 +33,23 @@ fn get_workspace_paths(arg_values: Vec<String>, config: &Config) -> Result<Vec<P
     Ok(workspace_paths)
 }
 
+fn run(args: Vec<String>, config: &Config) -> Result<()> {
+    for workspace_path in get_workspace_paths(args, config)? {
+        debug!("Processing workspace_root: {}", workspace_path.display());
+        let cargo_toml_path = workspace_path.join("Cargo.toml");
+        if !cargo_toml_path.exists() {
+            debug!(
+                "Skipping workspace without Cargo.toml: {}",
+                workspace_path.display()
+            );
+            continue;
+        }
+        global::build_utils::generate_symlinks(Some(workspace_path))?;
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Initialize tracing subscriber
     tracing_subscriber::fmt()
@@ -44,13 +61,9 @@ fn main() -> Result<()> {
     latest_bin::ensure_latest_bin()?;
 
     let config = read_config(None)?;
+    let args = std::env::args().collect();
 
-    for workspace_path in get_workspace_paths(std::env::args().collect(), &config)? {
-        debug!("Processing workspace_root: {}", workspace_path.display());
-        global::build_utils::generate_symlinks(Some(workspace_path))?;
-    }
-
-    Ok(())
+    run(args, &config)
 }
 
 #[cfg(test)]
@@ -143,6 +156,25 @@ mod tests {
             "~/workspace",
         ]
         "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_workspace_paths_skips_paths_without_cargo_config() -> Result<()> {
+        let env = setup_test_environment();
+        let invalid_dir = env.home.join("invalid_dir");
+        std::fs::create_dir_all(&invalid_dir)?;
+
+        let config = Config {
+            crate_locations: Some(vec![String::from("~/invalid_dir")]),
+            tmux: None,
+            shell_caching: None,
+        };
+
+        let args = vec!["generate-binutils-symlinks".to_string()];
+
+        run(args, &config)?;
 
         Ok(())
     }
