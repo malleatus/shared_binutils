@@ -116,7 +116,7 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use std::process::Command;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     fn write_file(dir: &TempDir, file_name: &str, content: &str) -> Result<()> {
         let file_path = dir.path().join(file_name);

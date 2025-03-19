@@ -232,7 +232,11 @@ fn run(args: Vec<String>) -> Result<()> {
     } else if let Some(shell_caching) = &config.shell_caching {
         shell_caching.source.clone()
     } else {
-        anyhow::bail!("No source directory provided. Either use the --source flag or set it in the config file. \nArgs: {:?} \nConfig: {:?}", args, config);
+        anyhow::bail!(
+            "No source directory provided. Either use the --source flag or set it in the config file. \nArgs: {:?} \nConfig: {:?}",
+            args,
+            config
+        );
     };
 
     let destination_dir = if let Some(destination) = args.destination {
@@ -240,7 +244,9 @@ fn run(args: Vec<String>) -> Result<()> {
     } else if let Some(shell_caching) = &config.shell_caching {
         shell_caching.destination.clone()
     } else {
-        anyhow::bail!("No source directory provided. Either use the --source flag or set it in the config file");
+        anyhow::bail!(
+            "No source directory provided. Either use the --source flag or set it in the config file"
+        );
     };
 
     let source_dir = shellexpand::tilde(&source_dir).to_string();
@@ -431,7 +437,10 @@ mod tests {
         let dest_file = dir.path().join("output.zsh");
 
         write(&source_file, "# CMD: echo 'hello world'\n")?;
-        write(&dest_file, "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nold output\n# OUTPUT END: echo 'hello world'\n")?;
+        write(
+            &dest_file,
+            "# CMD: echo 'hello world'\n# OUTPUT START: echo 'hello world'\nold output\n# OUTPUT END: echo 'hello world'\n",
+        )?;
 
         process_file(&source_file, &dest_file)?;
 

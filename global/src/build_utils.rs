@@ -94,7 +94,7 @@ pub fn generate_symlinks(working_dir: Option<PathBuf>) -> Result<()> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use test_utils::{create_workspace_with_packages, FakeBin, FakePackage};
+    use test_utils::{FakeBin, FakePackage, create_workspace_with_packages};
 
     #[test]
     fn test_process_package_target_exists() {
