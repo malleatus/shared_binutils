@@ -10,7 +10,7 @@ thread_local! {
 ///
 /// All uses of sh! share the same thread-local
 macro_rules! in_dir {
-    ($dir:expr, $block:block) => {{
+    ($dir:expr_2021, $block:block) => {{
         use anyhow::Result;
 
         CMD_DIR.with(|current_dir| {
@@ -30,7 +30,7 @@ macro_rules! in_dir {
 ///
 /// Not the least bit optimized for performance.
 macro_rules! sh {
-    ($cmd:expr) => {{
+    ($cmd:expr_2021) => {{
         use anyhow::Context;
 
         CMD_DIR.with(|cmd_dir| {
@@ -66,7 +66,7 @@ macro_rules! sh {
 ///
 ///Returns an error if the command failed to run.
 macro_rules! sh_q {
-    ($cmd:expr) => {{
+    ($cmd:expr_2021) => {{
         use anyhow::Context;
 
         CMD_DIR.with(|cmd_dir| {

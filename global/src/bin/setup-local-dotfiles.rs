@@ -183,7 +183,7 @@ fn setup_symlinks(base_path: &Path, dry_run: bool) -> Result<()> {
 
     debug!(
         "Creating nvim local lua config symlink: {} -> {}",
-        base_path.join("nvim/lua/local_nvim").display(),
+        base_path.join("nvim/lua/local_nvim").display().to_string(),
         local_nvim_path.display()
     );
     if !dry_run {
@@ -193,8 +193,11 @@ fn setup_symlinks(base_path: &Path, dry_run: bool) -> Result<()> {
 
     debug!(
         "Creating binutils local config symlink: {} -> {}",
-        base_path.join("binutils/config/local.config.lua").display(),
-        binutils_local_config_path.display()
+        base_path
+            .join("binutils/config/local.config.lua")
+            .display()
+            .to_string(),
+        binutils_local_config_path.display().to_string()
     );
     if !dry_run {
         std::os::unix::fs::symlink(
@@ -342,10 +345,12 @@ mod tests {
         ]);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("does not match expected URL"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not match expected URL")
+        );
 
         Ok(())
     }

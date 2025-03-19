@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use config::{read_config, Config};
+use config::{Config, read_config};
 use std::path::PathBuf;
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
@@ -72,7 +72,7 @@ mod tests {
     use config::Config;
     use insta::{assert_debug_snapshot, assert_snapshot};
     use test_utils::{
-        create_workspace_with_packages, setup_test_environment, stabilize_home_paths, FakePackage,
+        FakePackage, create_workspace_with_packages, setup_test_environment, stabilize_home_paths,
     };
 
     #[test]

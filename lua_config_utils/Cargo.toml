@@ -1,6 +1,6 @@
 [package]
 name = "lua_config_utils"
-edition = "2021"
+edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 version.workspace = true

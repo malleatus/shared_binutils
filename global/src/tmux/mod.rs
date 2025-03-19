@@ -3,7 +3,7 @@ use std::os::unix::process::CommandExt;
 use std::{collections::BTreeMap, path::PathBuf, process::Command};
 use tracing::{debug, trace};
 
-use config::{gather_crate_locations, Config, Window};
+use config::{Config, Window, gather_crate_locations};
 
 /// `TmuxOptions` is a trait for managing various options for working with these tmux utilities.
 ///
@@ -194,14 +194,12 @@ fn ensure_window(
         if windows.contains(&window.name) {
             trace!(
                 "Window {} already exists in session {}, skipping creation",
-                window.name,
-                session_name
+                window.name, session_name
             );
         } else {
             trace!(
                 "Window {} does not exist in session {}, creating it",
-                window.name,
-                session_name
+                window.name, session_name
             );
 
             let base_index = 1;
@@ -242,8 +240,7 @@ fn ensure_window(
     } else {
         trace!(
             "Session {} does not exist, creating it and window {}",
-            session_name,
-            window.name
+            session_name, window.name
         );
 
         let mut cmd = Command::new("tmux");
@@ -432,9 +429,9 @@ mod tests {
     use anyhow::Result;
     use config::Command as ConfigCommand;
     use insta::assert_debug_snapshot;
-    use rand::{distr::Alphanumeric, Rng};
+    use rand::{Rng, distr::Alphanumeric};
     use tempfile::tempdir;
-    use test_utils::{create_workspace_with_packages, setup_tracing, FakeBin, FakePackage};
+    use test_utils::{FakeBin, FakePackage, create_workspace_with_packages, setup_tracing};
 
     use crate::build_utils::generate_symlinks;
 

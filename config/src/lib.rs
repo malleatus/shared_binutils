@@ -302,7 +302,7 @@ mod tests {
     use std::env;
     use std::fs;
     use tempfile::tempdir;
-    use test_utils::{create_workspace_with_packages, FakePackage};
+    use test_utils::{FakePackage, create_workspace_with_packages};
     use test_utils::{setup_test_environment, stabilize_home_paths};
 
     #[test]

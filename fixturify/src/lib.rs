@@ -40,7 +40,7 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
             entry
                 .path()
                 .file_name()
-                .map_or(true, |file_name| file_name != ".git")
+                .is_none_or(|file_name| file_name != ".git")
         })
         .build();
 
@@ -116,7 +116,7 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use std::process::Command;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     fn write_file(dir: &TempDir, file_name: &str, content: &str) -> Result<()> {
         let file_path = dir.path().join(file_name);
