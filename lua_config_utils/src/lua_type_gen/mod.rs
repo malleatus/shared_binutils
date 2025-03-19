@@ -22,15 +22,14 @@ fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S) -> String {
                     output.push('\n');
                 }
             }
-            _ => match item {
-                Item::Enum(item_enum) => {
+            _ => {
+                if let Item::Enum(item_enum) = item {
                     if has_derive_deserialize(&item_enum.attrs) {
                         output.push_str(&generate_lua_enum_alias(&item_enum));
                         output.push('\n');
                     }
                 }
-                _ => {}
-            },
+            }
         }
     }
 

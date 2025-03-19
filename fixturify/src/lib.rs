@@ -40,7 +40,7 @@ pub fn read<S: AsRef<Path>>(from: S) -> Result<BTreeMap<String, String>> {
             entry
                 .path()
                 .file_name()
-                .map_or(true, |file_name| file_name != ".git")
+                .is_none_or(|file_name| file_name != ".git")
         })
         .build();
 
