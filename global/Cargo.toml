@@ -1,5 +1,5 @@
 [package]
-name = "global"
+name = "shared_global"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

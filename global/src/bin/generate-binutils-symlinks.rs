@@ -44,7 +44,7 @@ fn run(args: Vec<String>, config: &Config) -> Result<()> {
             );
             continue;
         }
-        global::build_utils::generate_symlinks(Some(workspace_path))?;
+        shared_global::build_utils::generate_symlinks(Some(workspace_path))?;
     }
 
     Ok(())

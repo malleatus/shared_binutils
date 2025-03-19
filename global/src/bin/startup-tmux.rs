@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use config::read_config;
-use global::tmux::{startup_tmux, TmuxOptions};
+use shared_global::tmux::{startup_tmux, TmuxOptions};
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
 
