@@ -15,17 +15,17 @@ fn generate_lua_types_from_file<S: AsRef<Path>>(file_path: S) -> String {
     let mut output = String::new();
 
     for item in syntax.items {
-        if let Item::Struct(item_struct) = item {
+        match item { Item::Struct(item_struct) => {
             if has_derive_deserialize(&item_struct.attrs) {
                 output.push_str(&generate_lua_types_for_struct(&item_struct));
                 output.push('\n');
             }
-        } else if let Item::Enum(item_enum) = item {
+        } _ => { match item { Item::Enum(item_enum) => {
             if has_derive_deserialize(&item_enum.attrs) {
                 output.push_str(&generate_lua_enum_alias(&item_enum));
                 output.push('\n');
             }
-        }
+        } _ => {}}}}
     }
 
     output
@@ -108,43 +108,43 @@ fn get_lua_type(ty: &Type) -> String {
             "String" => "string".to_string(),
             "Option" => {
                 // Handle Option<T>
-                if let Some(inner_type) = get_generic_type_arg(path) {
+                match get_generic_type_arg(path) { Some(inner_type) => {
                     format!("{}|nil", get_lua_type(&inner_type))
-                } else {
+                } _ => {
                     "any|nil".to_string()
-                }
+                }}
             }
             "Vec" => {
                 // Handle Vec<T>
-                if let Some(inner_type) = get_generic_type_arg(path) {
+                match get_generic_type_arg(path) { Some(inner_type) => {
                     format!("{}[]", get_lua_type(&inner_type))
-                } else {
+                } _ => {
                     "any[]".to_string()
-                }
+                }}
             }
             "HashMap" => {
                 // Handle HashMap<K, V>
-                if let Some((key_type, value_type)) = get_map_type_args(path) {
+                match get_map_type_args(path) { Some((key_type, value_type)) => {
                     format!(
                         "table<{}, {}>",
                         get_lua_type(&key_type),
                         get_lua_type(&value_type)
                     )
-                } else {
+                } _ => {
                     "table<any, any>".to_string()
-                }
+                }}
             }
             "BTreeMap" => {
                 // Handle BTreeMap<K, V>
-                if let Some((key_type, value_type)) = get_map_type_args(path) {
+                match get_map_type_args(path) { Some((key_type, value_type)) => {
                     format!(
                         "table<{}, {}>",
                         get_lua_type(&key_type),
                         get_lua_type(&value_type)
                     )
-                } else {
+                } _ => {
                     "table<any, any>".to_string()
-                }
+                }}
             }
             "PathBuf" => "string".to_string(), // Treat PathBuf as a string
             _ => segment.clone(),              // Fallback: use the Rust type name directly

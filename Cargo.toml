@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
   "config",
   "fixturify",
@@ -12,8 +12,8 @@ members = [
 ]
 
 [workspace.package]
-edition = "2021"
-rust-version = "1.80"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 version = "0.1.0"
 authors = [

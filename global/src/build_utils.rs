@@ -23,7 +23,7 @@ fn process_package(package: &Package, profile: &str, workspace_target_dir: &Path
     if crate_target_dir.exists() {
         info!(
             "{}/target already exists, removing it",
-            &crate_target_dir.display()
+            crate_target_dir.display()
         );
 
         fs::remove_dir_all(&crate_target_dir).with_context(|| {
